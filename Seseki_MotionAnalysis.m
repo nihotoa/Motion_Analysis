@@ -24,10 +24,12 @@ each_plotの中で，save_foldのpathに必要な変数を定義しているの�
 clear;
 %% set param
 monkey_name = 'Se'; 
-conduct_joint_angle_analysis = 0;
+conduct_joint_angle_analysis = 1;
 likelyhood_threshold = 0.9;
-plot_each_days_joint_angle = 0;
-plot_range = [-30, 30];
+plot_each_days_joint_angle = 1;
+plot_range = [-30, 30]; %window size of plot(used plot_each & plot_all)
+nanmean_type = 'stricted'; %'absolute'/'stricted'
+trial_ratio_threshold = 0.6; %(if nanmean_type=="stricted") %at least, How many trials are necessary to plot
 plot_all_days_joint_angle = 1; 
 save_data_location = 'save_data';
 save_figure_loacation = 'save_figure';
@@ -35,7 +37,7 @@ calc_max_min_angle = 1;
 
 %% code section
 %% generates the data necessary for general motion analysis.
-disp('Please select the folder containing Seseki movie basic_data')
+disp('Please select the folder containing Seseki movie (Motion_analysis -> seseki_movie)')
 movie_fold_full_path = uigetdir();
 if movie_fold_full_path == 0
     error('user pressed cancel.');
@@ -102,23 +104,30 @@ if conduct_joint_angle_analysis
 end
 
 %% plot the angle data of each days
-% causion!!: Please conduct oint_angle_analysis first
+% caution!!: Please conduct joint_angle_analysis first
 if plot_each_days_joint_angle
     joint_angle_data_location = fullfile(pwd, save_data_location, 'joint_angle');
     for ii =1:length(day_folders)
         joint_angle_data_path = fullfile(joint_angle_data_location,day_folders{ii}, 'joint_angle_data.mat');
         load(joint_angle_data_path, 'joint_angle_data_list', 'target_joint')
         % plot figure & save plot data
-        each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range)
+        switch nanmean_type
+            case 'absolute'
+                each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range);
+            case 'stricted'
+                each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range, trial_ratio_threshold);
+        end
+        % each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range)
     end
 end
 
 %% plot the angle data of all days
+% caution!!:Please conduct plot_each_joint_angle
 if plot_all_days_joint_angle
     common_load_data_location = fullfile(pwd, save_data_location, 'trimmed_joint_angle',  [num2str(plot_range(1)) '_to_' num2str(plot_range(2)) '(frames)']);
     figure('Position',[0 0 600 800]);
     for ii = 1:length(day_folders)
-        load(fullfile(common_load_data_location, day_folders{ii}, 'trimmed_joint_angle_data(std).mat'), 'target_joint', 'trimmed_joint_angle_data');
+        load(fullfile(common_load_data_location, day_folders{ii},  ['trimmed_joint_angle_data(' fig_type ')_ratio_above_' num2str(trial_ratio_threshold) '.mat']), 'target_joint', 'trimmed_joint_angle_data');
         color_value = [ii/length(day_folders), 0, 0];
         for jj = 1:length(target_joint)
             subplot(length(target_joint), 1, jj)
@@ -128,7 +137,7 @@ if plot_all_days_joint_angle
                 grid on;
                 xlabel('elapsed time(frame)', 'FontSize',15);
                 ylabel('joint angle(degree)', 'FontSize', 15);
-                title([target_joint{ii} ' joint angle'], 'FontSize',15)
+                title([target_joint{jj} ' joint angle'], 'FontSize',15)
             end
             plot_data = eval(['trimmed_joint_angle_data.' target_joint{jj}]);
             x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
@@ -154,8 +163,8 @@ end
 %% 
 if calc_max_min_angle
     common_load_data_location = fullfile(pwd, save_data_location, 'joint_angle');
-    output_data1 = zeros(length(day_folders), 4); % MP
-    output_data2 = zeros(length(day_folders), 4); % Wrist
+    output_data1 = zeros(length(day_folders), 5); % MP
+    output_data2 = zeros(length(day_folders), 5); % Wrist
     for ii = 1:length(day_folders)
         load_data_path = fullfile(common_load_data_location, day_folders{ii}, 'joint_angle_data.mat');
         load(load_data_path, 'joint_angle_data_list', 'target_joint');
@@ -170,19 +179,21 @@ if calc_max_min_angle
                 min_data_list(kk) = min(ref_data);
             end
             % calcuration
-            max_mean = mean(max_data_list);
-            max_std = std(max_data_list);
-            min_mean = mean(min_data_list);
-            min_std = std(min_data_list);
+            max_mean = round(mean(max_data_list),1);
+            max_std = round(std(max_data_list),1);
+            min_mean = round(mean(min_data_list),1);
+            min_std =round( std(min_data_list),1);
+            diff = round(max_mean-min_mean ,1);
             eval(['output_data' num2str(jj) '(ii ,1) = max_mean;'])
             eval(['output_data' num2str(jj) '(ii ,2) = min_mean;'])
             eval(['output_data' num2str(jj) '(ii ,3) = max_std;'])
             eval(['output_data' num2str(jj) '(ii ,4) = min_std;'])
+            eval(['output_data' num2str(jj) '(ii ,5) = diff;'])
         end
     end
     % create table & extract table
     row_names = day_folders;
-    col_names = {'max_angle[degree]', 'min_angle[degree]', 'max_angle_std', 'min_angle_std'};
+    col_names = {'max_angle[degree]', 'min_angle[degree]', 'max_angle_std', 'min_angle_std', 'diff_max_min'};
     for ii = 1:length(target_joint)
         ref_output = eval(['output_data' num2str(ii)]);
         output_table = array2table(ref_output, 'RowNames', row_names, 'VariableNames', col_names);

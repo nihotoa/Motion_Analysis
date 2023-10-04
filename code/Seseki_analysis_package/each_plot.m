@@ -1,11 +1,12 @@
-function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range)
+function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range, trial_ratio_threshold)
 % make figures
  fig_str = struct();
- fig_str.stack = figure('Position',[0 0 600 600]);
- fig_str.std = figure('Position',[0 0 600 600]);
+ fig_str.stack = figure('Position',[100 100 1200 600]);
+ fig_str.std = figure('Position',[0 0 1200 600]);
  fig_name_list = {'stack', 'std'};
 
- for ii = 1:length(target_joint)
+ trimmed_aligned_all_trial_data = struct();
+ for ii = 1:length(target_joint) % main(focused) data
      trial_num = numel(fieldnames(joint_angle_data_list));
      plot_trial_count = 0; %how many trials be plotted (some trial doesn't contains contents)
      max_frame_length = 0;
@@ -21,9 +22,15 @@ function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range
             continue
          end
      end
+     % max frameとトライアル数が分かった
+
+     % focusデータのminimum_alignのデータと,shift量を調べていく
+     %(mainの場合は,subのために，shift量をshift_listに格納する)
+     shift_amount_list = zeros(plot_trial_count, 1);
 
      all_trial_data = NaN(trial_num, 1000); % the reason for setting the number to 1000 is meaningless.(any large number will do)
      trial_names = fieldnames(joint_angle_data_list);
+     %メインのデータを格納していく
      for jj = 1:trial_num
          trial_name = trial_names{jj};
          plot_data = eval(['joint_angle_data_list.' trial_name '.' target_joint{ii} ';']);
@@ -31,52 +38,100 @@ function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range
      end
 
      % align all trials at the frame of the minimum angle
-     min_values = min(all_trial_data, [], 2);
+     % mainのデータを最小値をとる場所でalignする
      aligned_all_trial_data = NaN(trial_num, 1000);
+     %↓ここはmainとsubで異なる(shift_amountを計算するところと格納するところ)
      for jj = 1:trial_num
          [~, min_idx] = min(all_trial_data(jj,:));
          shift_amount = round(max_frame_length / 2) - min_idx;
+         shift_amount_list(jj) = shift_amount;
          aligned_all_trial_data(jj, :) = circshift(all_trial_data(jj, :), [0, shift_amount]);
      end
-    
+
      % trim data by following plot_range
      min_value_idx = max_frame_length / 2 ;
      start_idx = (min_value_idx+plot_range(1))+1;
      end_idx = min_value_idx+plot_range(2);
-     trimmed_aligned_all_trial_data = aligned_all_trial_data(:, start_idx:end_idx);
-     eval(['save_stack_data.' target_joint{ii} ' = aligned_all_trial_data(:, start_idx:end_idx);']);
+     eval(['trimmed_aligned_all_trial_data.main_' target_joint{ii} '.' target_joint{ii} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %plot用のデータ
+     eval(['save_stack_data.main_' target_joint{ii} '.' target_joint{ii} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %セーブ用のデータ 
      x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
-    
-     % plot figure
-     for jj = 1:length(fig_name_list)
-         fig_type = fig_name_list{jj};
-         eval(['figure(fig_str.' fig_type ')'])
-         subplot(length(target_joint),1, ii);
-         switch fig_type
-             case 'stack'
-                 for kk = 1:plot_trial_count
-                     plot(x, trimmed_aligned_all_trial_data(kk, :))
-                     hold on;
-                 end
-             case 'std'
-                 mean_data = nanmean(trimmed_aligned_all_trial_data);
-                 eval(['save_std_data.' target_joint{ii} ' = nanmean(trimmed_aligned_all_trial_data);'])
-                 std_data = nanstd(trimmed_aligned_all_trial_data);
-                 ar1=area(x, transpose([mean_data-std_data;std_data+std_data]));
-                 set(ar1(1),'FaceColor','None','LineStyle',':','EdgeColor','r')
-                 set(ar1(2),'FaceColor','r','FaceAlpha',0.2,'LineStyle',':','EdgeColor','r') 
-                 hold on;
-                 plot(x, mean_data, 'LineWidth',1.5, 'Color','b')
+
+     % subに対して,amount_listを使用してalignしていく
+     for kk = 1:length(target_joint)
+         if kk == ii %kkがメインなら既に済みなのでcontinue
+             continue
+         else
+             all_trial_data = NaN(trial_num, 1000); % the reason for setting the number to 1000 is meaningless.(any large number will do)
+             trial_names = fieldnames(joint_angle_data_list);
+             %subのデータを格納していく
+             for jj = 1:trial_num
+                 trial_name = trial_names{jj};
+                 plot_data = eval(['joint_angle_data_list.' trial_name '.' target_joint{kk} ';']);
+                 all_trial_data(jj, 1:length(plot_data)) = plot_data;
+             end
+        
+             % align all trials at the frame of the minimum angle
+             aligned_all_trial_data = NaN(trial_num, 1000);
+             %↓ここはmainと違う(shift_amount_listを使用している)
+             for jj = 1:trial_num
+                 shift_amount = shift_amount_list(jj);
+                 aligned_all_trial_data(jj, :) = circshift(all_trial_data(jj, :), [0, shift_amount]);
+             end
+        
+             % trim data by following plot_range
+             min_value_idx = max_frame_length / 2 ;
+             start_idx = (min_value_idx+plot_range(1))+1;
+             end_idx = min_value_idx+plot_range(2);
+             eval(['trimmed_aligned_all_trial_data.main_' target_joint{ii} '.' target_joint{kk} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %plot用のデータ
+             eval(['save_stack_data.main_' target_joint{ii} '.' target_joint{kk} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %セーブ用のデータ 
+             x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
          end
-        % decoration
-        grid on;
-        xlabel('elapsed time(frame)', 'FontSize',15);
-        ylabel('joint angle(degree)', 'FontSize', 15);
-        title([target_joint{ii} ' joint angle'], 'FontSize',15)
-        hold off
+     end
+     % plot figure
+     for jj = 1:length(fig_name_list) %'stack'/std''
+         for kk = 1:length(target_joint) %main & sub
+             fig_type = fig_name_list{jj};
+             eval(['figure(fig_str.' fig_type ')'])
+             subplot(length(target_joint),length(target_joint), length(target_joint)*(kk-1)+ii);
+             ref_data = eval(['trimmed_aligned_all_trial_data.main_' target_joint{ii} '.' target_joint{kk}]);
+             switch fig_type
+                 case 'stack'
+                     for ll = 1:plot_trial_count
+                         plot(x, ref_data(ll, :))
+                         hold on;
+                     end
+                 case 'std'
+                     mean_data = nanmean(ref_data);
+                     eval(['save_std_data.' target_joint{ii} ' = nanmean(ref_data);']) %変更する必要あり
+                     std_data = nanstd(ref_data);
+                     if exist('trial_ratio_threshold') % contain 'trial_ratio_threshold'
+                         % if the number of trials in not enough,  make it a
+                         % NaN value
+                         min_trial_num = round(plot_trial_count * trial_ratio_threshold);
+                         each_frame_trials = sum(~isnan(ref_data));
+                         mean_data(find(each_frame_trials < min_trial_num)) = NaN;
+                         std_data(find(each_frame_trials < min_trial_num)) = NaN;
+                     end
+                     ar1=area(x, transpose([mean_data-std_data;std_data+std_data]));
+                     set(ar1(1),'FaceColor','None','LineStyle',':','EdgeColor','r')
+                     set(ar1(2),'FaceColor','r','FaceAlpha',0.2,'LineStyle',':','EdgeColor','r') 
+                     hold on;
+                     plot(x, mean_data, 'LineWidth',1.5, 'Color','b')
+             end
+            % decoration
+            grid on;
+            xlabel('elapsed time(frame)', 'FontSize',15);
+            ylabel('joint angle(degree)', 'FontSize', 15);
+            additional_str = '';
+            if ii==kk %if ref_data is the data from focused_angle
+                additional_str = '(main)';
+                xline(0,'red' ,'LineWidth',1.5)
+            end
+            title([target_joint{kk} ' joint angle' additional_str], 'FontSize',15)
+            hold off
+         end
      end
  end
-
  %% save data & figure
 % save data
 save_data_location = 'save_data';
@@ -89,7 +144,16 @@ for ii = 1:length(fig_name_list)
          mkdir(save_data_fold_path);
      end
      eval(['trimmed_joint_angle_data = save_' fig_type '_data;'])
-     save(fullfile(save_data_fold_path, ['trimmed_joint_angle_data(' fig_type ').mat']), 'trimmed_joint_angle_data', 'target_joint');
+     switch fig_type
+         case 'stack'
+            save(fullfile(save_data_fold_path, ['trimmed_joint_angle_data(' fig_type ').mat']), 'trimmed_joint_angle_data', 'target_joint');
+         case 'std'
+             if exist('trial_ratio_threshold')
+                 save(fullfile(save_data_fold_path, ['trimmed_joint_angle_data(' fig_type ')_ratio_above_' num2str(trial_ratio_threshold) '.mat']), 'trimmed_joint_angle_data', 'target_joint');
+             else
+                 save(fullfile(save_data_fold_path, ['trimmed_joint_angle_data(' fig_type ').mat']), 'trimmed_joint_angle_data', 'target_joint');
+             end
+     end
 end
 
  % save figure
@@ -102,13 +166,17 @@ for ii = 1:length(fig_name_list)
      eval(['figure(fig_str.' fig_type ')'])
      if not(exist(fullfile(save_fig_fold_path, ref_day)))
         mkdir(fullfile(save_fig_fold_path, ref_day));
-    end
-     saveas(gcf, fullfile(save_fig_fold_path, ref_day, ['joint_angle_figure(' fig_type ').fig']))
-     saveas(gcf, fullfile(save_fig_fold_path, ref_day, ['joint_angle_figure(' fig_type ').png']))
+     end
+
+     add_str = '';
+     if and(strcmp(fig_type, 'std'), exist('trial_ratio_threshold'))
+         add_str = ['_ratio_above_' num2str(trial_ratio_threshold)];
+     end
+     saveas(gcf, fullfile(save_fig_fold_path, ref_day, ['joint_angle_figure(' fig_type ')' add_str '.fig']))
+     saveas(gcf, fullfile(save_fig_fold_path, ref_day, ['joint_angle_figure(' fig_type ')' add_str '.png']))
 end
  close all;
 end
 
-% MPの最小値で合わせる
-% wristも最小値で合わせる
+%% define local function
 
