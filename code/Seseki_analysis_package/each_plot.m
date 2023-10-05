@@ -22,71 +22,19 @@ function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range
             continue
          end
      end
-     % max frameとトライアル数が分かった
-
-     % focusデータのminimum_alignのデータと,shift量を調べていく
-     %(mainの場合は,subのために，shift量をshift_listに格納する)
+     
+     % Shift 'main_joint' data to align at minimum joint angle
      shift_amount_list = zeros(plot_trial_count, 1);
-
-     all_trial_data = NaN(trial_num, 1000); % the reason for setting the number to 1000 is meaningless.(any large number will do)
-     trial_names = fieldnames(joint_angle_data_list);
-     %メインのデータを格納していく
-     for jj = 1:trial_num
-         trial_name = trial_names{jj};
-         plot_data = eval(['joint_angle_data_list.' trial_name '.' target_joint{ii} ';']);
-         all_trial_data(jj, 1:length(plot_data)) = plot_data;
-     end
-
-     % align all trials at the frame of the minimum angle
-     % mainのデータを最小値をとる場所でalignする
-     aligned_all_trial_data = NaN(trial_num, 1000);
-     %↓ここはmainとsubで異なる(shift_amountを計算するところと格納するところ)
-     for jj = 1:trial_num
-         [~, min_idx] = min(all_trial_data(jj,:));
-         shift_amount = round(max_frame_length / 2) - min_idx;
-         shift_amount_list(jj) = shift_amount;
-         aligned_all_trial_data(jj, :) = circshift(all_trial_data(jj, :), [0, shift_amount]);
-     end
-
-     % trim data by following plot_range
-     min_value_idx = max_frame_length / 2 ;
-     start_idx = (min_value_idx+plot_range(1))+1;
-     end_idx = min_value_idx+plot_range(2);
-     eval(['trimmed_aligned_all_trial_data.main_' target_joint{ii} '.' target_joint{ii} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %plot用のデータ
-     eval(['save_stack_data.main_' target_joint{ii} '.' target_joint{ii} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %セーブ用のデータ 
-     x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
-
-     % subに対して,amount_listを使用してalignしていく
+     [trimmed_aligned_all_trial_data,save_stack_data,x,shift_amount_list] = align_data(trial_num, joint_angle_data_list,target_joint, ii, max_frame_length,plot_range, trimmed_aligned_all_trial_data, shift_amount_list, 'main');
+     % Shift 'sub_joint' data to align at minimum joint angle of main_joint
      for kk = 1:length(target_joint)
-         if kk == ii %kkがメインなら既に済みなのでcontinue
+         if kk == ii %if kk(sub_idx) is ii(main_idx) -> continue
              continue
          else
-             all_trial_data = NaN(trial_num, 1000); % the reason for setting the number to 1000 is meaningless.(any large number will do)
-             trial_names = fieldnames(joint_angle_data_list);
-             %subのデータを格納していく
-             for jj = 1:trial_num
-                 trial_name = trial_names{jj};
-                 plot_data = eval(['joint_angle_data_list.' trial_name '.' target_joint{kk} ';']);
-                 all_trial_data(jj, 1:length(plot_data)) = plot_data;
-             end
-        
-             % align all trials at the frame of the minimum angle
-             aligned_all_trial_data = NaN(trial_num, 1000);
-             %↓ここはmainと違う(shift_amount_listを使用している)
-             for jj = 1:trial_num
-                 shift_amount = shift_amount_list(jj);
-                 aligned_all_trial_data(jj, :) = circshift(all_trial_data(jj, :), [0, shift_amount]);
-             end
-        
-             % trim data by following plot_range
-             min_value_idx = max_frame_length / 2 ;
-             start_idx = (min_value_idx+plot_range(1))+1;
-             end_idx = min_value_idx+plot_range(2);
-             eval(['trimmed_aligned_all_trial_data.main_' target_joint{ii} '.' target_joint{kk} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %plot用のデータ
-             eval(['save_stack_data.main_' target_joint{ii} '.' target_joint{kk} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %セーブ用のデータ 
-             x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
+             [trimmed_aligned_all_trial_data,save_stack_data,x] = align_data(trial_num, joint_angle_data_list,target_joint, ii, max_frame_length,plot_range, trimmed_aligned_all_trial_data, shift_amount_list,'sub',kk);
          end
      end
+
      % plot figure
      for jj = 1:length(fig_name_list) %'stack'/std''
          for kk = 1:length(target_joint) %main & sub
@@ -102,7 +50,7 @@ function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range
                      end
                  case 'std'
                      mean_data = nanmean(ref_data);
-                     eval(['save_std_data.' target_joint{ii} ' = nanmean(ref_data);']) %変更する必要あり
+                     eval(['save_std_data.' target_joint{ii} ' = nanmean(ref_data);']) 
                      std_data = nanstd(ref_data);
                      if exist('trial_ratio_threshold') % contain 'trial_ratio_threshold'
                          % if the number of trials in not enough,  make it a
@@ -111,6 +59,7 @@ function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range
                          each_frame_trials = sum(~isnan(ref_data));
                          mean_data(find(each_frame_trials < min_trial_num)) = NaN;
                          std_data(find(each_frame_trials < min_trial_num)) = NaN;
+                         eval(['save_std_data.' target_joint{ii} ' = mean_data;'])
                      end
                      ar1=area(x, transpose([mean_data-std_data;std_data+std_data]));
                      set(ar1(1),'FaceColor','None','LineStyle',':','EdgeColor','r')
@@ -179,4 +128,48 @@ end
 end
 
 %% define local function
+function [trimmed_aligned_all_trial_data,save_stack_data,x,shift_amount_list] = align_data(trial_num, joint_angle_data_list,target_joint, ii, max_frame_length,plot_range, trimmed_aligned_all_trial_data, shift_amount_list, data_type,kk)
+ switch data_type
+     case 'main'
+         main_idx = ii;
+         sub_idx = ii;
+     case 'sub'
+         main_idx = ii;
+         sub_idx = kk;
+ end
+ all_trial_data = NaN(trial_num, 1000); % the reason for setting the number to 1000 is meaningless.(any large number will do)
+ trial_names = fieldnames(joint_angle_data_list);
+ %メインのデータを格納していく
+ for jj = 1:trial_num
+     trial_name = trial_names{jj};
+     plot_data = eval(['joint_angle_data_list.' trial_name '.' target_joint{sub_idx} ';']);
+     all_trial_data(jj, 1:length(plot_data)) = plot_data;
+ end
+
+ % align all trials at the frame of the minimum angle
+ % mainのデータを最小値をとる場所でalignする
+ aligned_all_trial_data = NaN(trial_num, 1000);
+ %↓ここはmainとsubで異なる(shift_amountを計算するところと格納するところ)
+ for jj = 1:trial_num
+     switch data_type
+         case 'main'
+             [~, min_idx] = min(all_trial_data(jj,:));
+             shift_amount = round(max_frame_length / 2) - min_idx;
+             shift_amount_list(jj) = shift_amount;
+             aligned_all_trial_data(jj, :) = circshift(all_trial_data(jj, :), [0, shift_amount]);
+         case 'sub'
+             shift_amount = shift_amount_list(jj);
+             aligned_all_trial_data(jj, :) = circshift(all_trial_data(jj, :), [0, shift_amount]);
+     end
+ end
+
+ % trim data by following plot_range
+ min_value_idx = max_frame_length / 2 ;
+ start_idx = (min_value_idx+plot_range(1))+1;
+ end_idx = min_value_idx+plot_range(2);
+ eval(['trimmed_aligned_all_trial_data.main_' target_joint{main_idx} '.' target_joint{sub_idx} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %plot用のデータ
+ eval(['save_stack_data.main_' target_joint{main_idx} '.' target_joint{sub_idx} ' = aligned_all_trial_data(:, start_idx:end_idx);']); %セーブ用のデータ 
+ x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
+end
+
 

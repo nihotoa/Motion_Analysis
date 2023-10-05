@@ -18,15 +18,15 @@ post: coming soon...
 
 改善点:
 each_plotの中で，save_foldのpathに必要な変数を定義しているの，こっちの大元の関数で変数定義する様に変更する
-
+each_plotを書き換えたため,allplotでloadするデータの構造が変わっている -> それに応じたコードを書く
 %}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear;
 %% set param
 monkey_name = 'Se'; 
-conduct_joint_angle_analysis = 1;
+conduct_joint_angle_analysis = 0;
 likelyhood_threshold = 0.9;
-plot_each_days_joint_angle = 1;
+plot_each_days_joint_angle = 0;
 plot_range = [-30, 30]; %window size of plot(used plot_each & plot_all)
 nanmean_type = 'stricted'; %'absolute'/'stricted'
 trial_ratio_threshold = 0.6; %(if nanmean_type=="stricted") %at least, How many trials are necessary to plot
@@ -123,6 +123,7 @@ end
 
 %% plot the angle data of all days
 % caution!!:Please conduct plot_each_joint_angle
+% 使用するデータを,nanmean考慮にするのか,restrictにするのかで分ける
 if plot_all_days_joint_angle
     common_load_data_location = fullfile(pwd, save_data_location, 'trimmed_joint_angle',  [num2str(plot_range(1)) '_to_' num2str(plot_range(2)) '(frames)']);
     figure('Position',[0 0 600 800]);
@@ -203,6 +204,8 @@ if calc_max_min_angle
         writetable(output_table, excelFileName, 'Sheet', 'Sheet1', 'WriteRowNames',true);  % 'Sheet1'はシート名を指定します
     end
 end
+
+
 
 
 
