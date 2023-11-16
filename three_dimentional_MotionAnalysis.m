@@ -31,8 +31,12 @@ project_name = '3D_motion_analysis';
 max_camera_num = 4; % number of cameras
 timing_num = 4;
 extract_timing_frame = 1; % chach the specific frame rate of  the trimmed video(resolution is integer)
-search_frame_rate = 1; % search for the frame rate of recoded movie
+search_frame_rate = 0; % search for the frame rate of recoded movie
 EMG_sampleRate = 1375;%[Hz]
+create_real_time_videos = 0; % Create a new video by modifying the original video 
+select_fold = 'manual'; %'auto'/'maunal'
+changed_fps = 60;
+movie_extension = '.avi';  % Extension of video to be analyzed
 %% code section
 % get data common to all functions
 movie_fold_path = fullfile(pwd, [real_name '_movie']);
@@ -52,7 +56,7 @@ for ii = 1:length(day_folders)
     end
 end
 
-% this analysis requires EMG timing data & trimmed videos.
+%% this analysis requires EMG timing data & trimmed videos.
 if extract_timing_frame
     save_data_common_path = fullfile(pwd, 'save_data', project_name, real_name, 'timing_frame_list');
     if not(exist(save_data_common_path))
@@ -69,7 +73,7 @@ if extract_timing_frame
             used_cameras(jj) = str2double(num_parts{1});
         end
         % find relative fps(which is based on trial seetart timing) at each timing
-        for jj = 1:length(used_cameras)   
+        for jj = 3:length(used_cameras)   %デバッグのために1時的に3に変えた
             ref_camera_num = used_cameras(jj);
             each_camera_files_name = eval(['ref_struct.camera' num2str(ref_camera_num)]);
             output_array = extract_each_timing_frame(each_camera_files_name, timing_num, day_folders{ii}, real_name);
@@ -118,6 +122,39 @@ if search_frame_rate
             frame_rate_table.std = std_value;
             eval(['all_frame_list_struct.' monkey_name day_folders{ii} '.camera' num2str(jj) ' = frame_rate_table;']) 
             % each_days_movie_frameRate_list{ii} = [num2str(mean_value) '+-' num2str(std_value)];
+        end
+    end
+end
+
+% originalのvideoを読み込んで,指定したフレームレートの等倍速の動画を作成する
+if create_real_time_videos
+    % 解析対象の動画を手動で選ぶか，自動で選ぶか
+    switch select_fold
+        case 'auto'
+            ref_folders = day_folders;
+        case 'manual'
+            % 複数選択できなことに注意
+            disp(['解析したい動画の入っているフォルダを選択してください'])
+            ref_folders{1} = uigetdir();
+    end
+    %対象の動画のpathを指定
+    for ii = 1:length(ref_folders)
+        % 対象のフォルダのpathを取得
+        switch select_fold
+            case 'auto'
+                movie_day_fold_path = fullfile(movie_fold_path, ref_folders{ii});
+            case 'manual'
+                movie_day_fold_path = ref_folders{1};
+        end
+        % 対象フォルダ内の動画ファイル名の取得
+        movie_list = getfileName(movie_day_fold_path, movie_extension);
+        movie_num = length(movie_list);
+        for jj = 1:movie_num %movieごとに処理
+            ref_movie_path = fullfile(movie_day_fold_path, movie_list{jj});
+            % 現在の動画の記録された際のフレームレートを取得する(search_frame_rateの結果を使用する)
+            now_frame_rate = 240; 
+            % real_timeの動画を作る
+            create_real_time_video(changed_fps, ref_movie_path, now_frame_rate, movie_extension)
         end
     end
 end

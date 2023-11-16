@@ -21,6 +21,7 @@ for ii = 1:trial_num
     output_array(ii,4) = all_frames;
     % extract frame of timing2 & timin3(LED on off)
     [LED_on_frame, LED_off_frame, ref_x, ref_y] = extract_trial_LED_timing(videoObject, ref_x, ref_y);
+    % 失敗している場合は,NaNを返す
     if isempty(LED_on_frame) || isempty(LED_off_frame)
         output_array(ii, :) = NaN;
     else
