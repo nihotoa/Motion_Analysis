@@ -21,6 +21,7 @@ Sesekiと同じコードを使う際は,そのコードをcode -> common_package
 参照フォルダの中にあるもの全部を回すんじゃなくて，guiで選んだもののみを使う方がいいかもしれない.
 拡張子がaviで固定されているので,変数で指定するように変更する
 筋電と動画の称号について,   4タイミング全てを比較することで，同じタスクを捉えているかどうかを確認する
+timing_frame_listについてはカメラごとに保存した保がいい(1~4の全てのカメラではなくて)
 %}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear;
@@ -37,6 +38,7 @@ create_real_time_videos = 0; % Create a new video by modifying the original vide
 select_fold = 'manual'; %'auto'/'maunal'
 changed_fps = 60;
 movie_extension = '.avi';  % Extension of video to be analyzed
+
 %% code section
 % get data common to all functions
 movie_fold_path = fullfile(pwd, [real_name '_movie']);
@@ -73,7 +75,7 @@ if extract_timing_frame
             used_cameras(jj) = str2double(num_parts{1});
         end
         % find relative fps(which is based on trial seetart timing) at each timing
-        for jj = 3:length(used_cameras)   %デバッグのために1時的に3に変えた
+        for jj = 1:length(used_cameras) 
             ref_camera_num = used_cameras(jj);
             each_camera_files_name = eval(['ref_struct.camera' num2str(ref_camera_num)]);
             output_array = extract_each_timing_frame(each_camera_files_name, timing_num, day_folders{ii}, real_name);
