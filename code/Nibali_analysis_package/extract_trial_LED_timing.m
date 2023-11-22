@@ -30,8 +30,8 @@ function [LED_on_frame, LED_off_frame, ref_x, ref_y] = extract_trial_LED_timing(
     of_to_on_frame_candidate = find(diff_sum_RGB_list > off_to_on_threshold);
     on_to_off_frame_candidate = find(diff_sum_RGB_list < on_to_off_threshold);
     % 数字が連続している場合は, 連続する中で一番大きい値を取ってくる
-    on_frame = eliminate_consective_num(of_to_on_frame_candidate) + 1;  %eliminate consective values;  
-    off_frame = eliminate_consective_num(on_to_off_frame_candidate) + 1;   
+    on_frame = eliminate_consective_num(of_to_on_frame_candidate, 'front')+1;  %eliminate consective values;  
+    off_frame = eliminate_consective_num(on_to_off_frame_candidate, 'front');   
     
     % 正しく判定できているかを,manualでチェックする
     [on_frame, off_frame] = manual_fail_eliminate(videoObject, on_frame, off_frame);

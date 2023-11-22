@@ -31,13 +31,16 @@ if length(on_frame) >= 2 || length(off_frame) >= 2
             ref_frame = extract_specific_image(videoObject, ref_LED_timing(jj)+(plus_sign));
             while true
                 imshow(ref_frame);
-                input_string = input("LEDが光っていたらa,そうでない場合はdを押してください: ", 's');
+                input_string = input("LEDが光っていたらa,そうでない場合はd, 処理を中断したい場合はqを押してください: ", 's');
                 close all;
-                if strcmp(input_string, 'a') || strcmp(input_string, 'd')
+                if strcmp(input_string, 'a') || strcmp(input_string, 'd') || strcmp(input_string, 'q') 
                     if  strcmp(input_string, 'd')
                         % その値を抜く
                         eliminate_list(eliminate_count) = ref_LED_timing(jj);
                         eliminate_count = eliminate_count + 1;  
+                    elseif strcmp(input_string, 'q')
+                        disp('コマンドウィンドウにdbquitと入力してください')
+                        keyboard;
                     end
                     break
                 else
