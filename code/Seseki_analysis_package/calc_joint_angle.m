@@ -49,11 +49,6 @@ for ii = 2:length(body_parts)-1
     for jj = 1:frame_num
         next_to_ref_vector =  next_to_ref_vector_list(jj, :);
         ref_to_prev_vector = ref_to_prev_vector_list(jj, :);
-%         % calc
-%         inner_product = dot(next_to_ref_vector, ref_to_prev_vector);
-%         a_norm = norm(ref_to_prev_vector);
-%         b_norm = norm(next_to_ref_vector);
-%         angle = (acos(inner_product/(a_norm*b_norm))) * (180/pi);  % Convert from radians to degrees
 
         % calc angle and determine the rorate direction(flexor or extensor)
         x_unit_vector = [1 0];
@@ -66,7 +61,11 @@ for ii = 2:length(body_parts)-1
             rotation_direction = 1;  % Turn in the + direction
         elseif next_to_ref_unit_vector(2) > 0
             rotation_direction = -1;  % Turn in the - direction
+        elseif isnan(next_to_ref_unit_vector(2))
+            eval(['output_data.' body_parts{ii} '(' num2str(jj) ') = NaN;'])
+            continue; 
         end
+
         theta = rotation_direction * vs_x_angle;
         % rotate coordinates
         Rotation_matrix = [ cos(theta), -1*sin(theta);

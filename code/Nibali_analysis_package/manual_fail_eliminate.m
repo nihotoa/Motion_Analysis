@@ -1,3 +1,4 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %{
 extract_LED_timingの中で使われている
 threshold判定だけでは心もとないので,manualで最終確認するためにつくった関数
@@ -6,6 +7,8 @@ videoObject => data type: VideoReader, VideoReder関数で読み込まれた動�
 off_frame => data type: double, 数値が入った配列
 on_frame => 
 %}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 function [on_frame, off_frame] = manual_fail_eliminate(videoObject, on_frame, off_frame)
 % いずれかのタイミングが2つ以上あったら手動で取り除く
 if length(on_frame) >= 2 || length(off_frame) >= 2

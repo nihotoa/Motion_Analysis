@@ -1,6 +1,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %{
 入力として,フォルダのpathを受け取り,そのフォルダの中にあるoutput_typeで指定された拡張子ファイルの名前をcell配列として出力する 
+(例)
+ref_dir_name: /Users/naohitoohta/Desktop/Motion_analysis/Seseki_movie
+output_type: 'dir'
+だった場合, ref_dir_nameで指定したpath直下の全てのフォルダ(6フォルダだったら6個)の名前をcell配列にして返す
 【注意】
 ouput_typeの中身
 ディレクトリの名前が欲しい場合 => output_type = 'dir'

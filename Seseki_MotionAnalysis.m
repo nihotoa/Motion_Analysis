@@ -4,6 +4,7 @@
 
 [role of this code]
 Performs all processing related to Seseki behavior analysis
+(this code perform various analysis with focusing on minimum angle timing of MP & Wrist joint)
 
 [caution!!]
 > this code is created for Seseki movie analaysis. So, this code may not be compatible with other analyses.
@@ -37,11 +38,11 @@ plot_all_days_joint_angle = 0;
 save_data_location = 'save_data';
 save_figure_loacation = 'save_figure';
 calc_max_min_angle = 0;
-pick_up_image = 0; %angleが最小となる時のimageをとってくる(静止画をセーブフォルダにしまうだけ)
-video_type = '.avi'; %拡張子以下を記入すること
+pick_up_image = 0; % angleが最小となる時のimageをとってくる(静止画をセーブフォルダにしまうだけ)
+video_type = '.avi'; % 読み込み対象の動画の拡張子
 process_image = 1; %画像解析を行う(pick_up_imageで使用した画像を並べる & 重ね合わせる)
 image_type = '.png';
-flactuation_detection = 1; %関節角度の軌跡の微分値から関節角度が変動するタイミングを検知してそのフレーム数とID(どの関節がどの方向にを著したもの)を出力する(各トライアルにおける変動するタイミングを記録するだけ)
+flactuation_detection = 0; %関節角度の軌跡の微分値から関節角度が変動するタイミングを検知してそのフレーム数とID(どの関節がどの方向にを著したもの)を出力する(各トライアルにおける変動するタイミングを記録するだけ)
 %% code section
 %% generates the data necessary for general motion analysis.
 disp('Please select the folder containing Seseki movie (Motion_analysis -> seseki_movie)')
@@ -71,6 +72,7 @@ for ii = 1:length(day_folders)
         if jj == 1
             basic_data.body_parts = unique({csv_contents{1, :}}, 'stable');
             basic_data.data_type = unique({csv_contents{2, :}}, 'stable');
+            % num_partsの中で, '01'のindex番号をref_trial_idxに代入する
             ref_trial_idx = find(cellfun(@(x) isequal(x, '01'), num_parts));
         end
         ref_trial = num_parts{ref_trial_idx};

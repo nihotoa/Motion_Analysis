@@ -1,5 +1,9 @@
 %{
-最小値なのか最大値なのか
+[input arguments]
+joint_angle_data_list: 
+target_joint
+ref_day
+subject_name
 %}
 
 function output_images = pick_up_specific_image(joint_angle_data_list, target_joint, ref_day, subject_name, video_type)
@@ -32,14 +36,3 @@ for ii = 1:trial_num
     end
 end
 end
-
-%% define local function
-function VideoPath = getVideoPath(ref_trial, ref_day, subject_name, video_type)
-ref_dir_name = fullfile(pwd, [subject_name  '_Movie']);
-movie_dir_names = getfileName(ref_dir_name, 'dir');
-ref_movie_fold = movie_dir_names{find(contains(movie_dir_names, ref_day))};
-movie_files_names = getfileName(fullfile(ref_dir_name, ref_movie_fold), video_type);
-ref_file_name = movie_files_names{find(contains(movie_files_names, ['trial_' sprintf('%02d', ref_trial)]))};
-VideoPath = fullfile(ref_dir_name, ref_movie_fold, ref_file_name);
-end
-

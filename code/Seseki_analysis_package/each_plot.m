@@ -65,8 +65,7 @@ function [] = each_plot(joint_angle_data_list, target_joint, ref_day, plot_range
                      eval(['save_std_data.main_' target_joint{ii} '.' target_joint{kk} ' = nanmean(ref_data);']) 
                      std_data = nanstd(ref_data);
                      if exist('trial_ratio_threshold') % contain 'trial_ratio_threshold'
-                         % if the number of trials in not enough,  make it a
-                         % NaN value
+                         % if the number of trials in not enough,  make it a NaN value
                          min_trial_num = round(plot_trial_count * trial_ratio_threshold);
                          each_frame_trials = sum(~isnan(ref_data));
                          mean_data(find(each_frame_trials < min_trial_num)) = NaN;

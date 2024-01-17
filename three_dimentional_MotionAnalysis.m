@@ -26,22 +26,29 @@ timing_frame_listについて, 手動で切り出したcamera3だけ精度が悪
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear;
 %% set param
-
+% 共通な処理に必要なパラメータの設定
 monkey_name = 'Ni';
 real_name = 'Nibali'; % monkey's full name
 project_name = '3D_motion_analysis';
 max_camera_num = 4; % number of cameras
 timing_num = 4;
 
+% 各task動画における各タイミング(LED on, offなど)の起こったフレーム数を表にまとめる処理
 extract_timing_frame = 0; % chach the specific frame rate of  the trimmed video(resolution is integer)
 
-make_table_EMG_to_movie = 0;
-div_threshold = 8; % ズレの閾値(EMGと動画の対応づけに使う). divの計算がどのように行われているかはコードを見て
+% EMGのtrialと,各カメラからの各trialの対応づけに関するtableを作る
+make_table_EMG_to_movie = 1;
+div_threshold = 8; % ズレの閾値(EMGと動画の対応づけに使う). divの計算がどのように行われているかはコード(calc_frame_div)を見て
 search_range = 5; % 動画とEMGのトライアル数が何個までずれていていいか(説明が難しい)
 
+% EMGと動画の対応づけのtableを参照して,各動画の撮影時のフレームレートを推測した結果を表にまとめる
 search_frame_rate = 1; % search for the frame rate of recoded movie
 EMG_sampleRate = 1375;%[Hz]
 
+% 今までのデータを使って3次元座標をさん出する(さきにdeeplabcut行ってね)
+calc_DLT = 1;
+
+% 再生速度がreal speed(等倍速)の動画を作成する
 create_real_time_videos = 0; % Create a new video by modifying the original video 
 select_fold = 'manual'; %'auto'/'maunal'
 changed_fps = 60;
@@ -196,30 +203,45 @@ if search_frame_rate
         % extract reference days EMG_success_timing
         success_timing = eval(['success_timing_struct.' monkey_name day_folders{ii}]);
         % load timing_frame_list
-        save_data_common_path = fullfile(pwd, 'save_data', project_name, real_name, 'timing_frame_list');
-        % load(fullfile(save_data_common_path, [day_folders{ii} '_timing_frame_list.mat']), 'timing_frame_list', 'movie_name_list')
-        % 筋電と動画の対応づけが合っていると仮定して話しを進める
-        for jj = 1:camera_id %カメラごとに，フレームレートを求める(念の為)
-            load(fullfile(save_data_common_path, [day_folders{ii} '_timing_frame_list_camera' num2str(jj) '.mat']), 'timing_frame_list', 'movie_name_list')
-            [trial_num,~] =size(timing_frame_list);
-            movie_frameRate_list = zeros(trial_num,1);
-            % 筋電との対応から，各トライアルにおけるフレームレートを算出する
-            for kk = 1:trial_num
-                EMG_all_sample = success_timing(5,kk) - 1;
-                movie_all_frame = timing_frame_list.(['camera' num2str(jj)])(kk,4)-1;
-                movie_frameRate_list(kk) = (movie_all_frame/EMG_all_sample) * EMG_sampleRate;
+        save_data_common_path = fullfile(pwd, 'save_data', project_name, real_name);
+        load(fullfile(save_data_common_path, 'EMG_Movie_Correspond', [day_folders{ii} '_EMG_Movie_Correspond']), 'EMG_movie_correspond_table')
+        [EMG_trial_num, camera_num] = size(EMG_movie_correspond_table);
+        frame_rate_list = nan(EMG_trial_num, camera_num); %出力するリストの作成
+        for jj = 1:camera_id %カメラごとにループ
+            load(fullfile(save_data_common_path, 'timing_frame_list', [day_folders{ii} '_timing_frame_list_camera' num2str(jj) '.mat']), 'timing_frame_list');
+            for kk = 1:EMG_trial_num % EMGのtrialでループ
+                movie_trial_idx = EMG_movie_correspond_table{kk, jj};
+                if movie_trial_idx == 10000
+                    continue;
+                elseif isnan(movie_trial_idx)
+                    break
+                end
+                % EMGの経過サンプル数と, 動画の経過フレーム数を比較して割合を出す
+                EMG_one_task_frame = success_timing(5, kk)-1;
+                movie_one_task_frame = timing_frame_list{movie_trial_idx,4}-1;
+                ref_ratio = EMG_one_task_frame / movie_one_task_frame;
+                % 動画のフレームレートを算出する
+                frame_rate = EMG_sampleRate / ref_ratio; 
+                frame_rate_list(kk, jj) = frame_rate;
             end
-            % 最初の5つをpickupして平均値と分散を出す
-            pick_up_SR = movie_frameRate_list(1:5);
-            mean_value = mean(pick_up_SR);
-            std_value = std(pick_up_SR);
-            frame_rate_table = table;
-            frame_rate_table.mean = mean_value;
-            frame_rate_table.std = std_value;
-            eval(['all_frame_list_struct.' monkey_name day_folders{ii} '.camera' num2str(jj) ' = frame_rate_table;']) 
-            % each_days_movie_frameRate_list{ii} = [num2str(mean_value) '+-' num2str(std_value)];
         end
+        % tableを作成する
+        row_names = strcat('EMG trial', cellstr(num2str((1:EMG_trial_num)')));
+        col_names = strcat('camera', cellstr(num2str((1:camera_id)')), '_frameRate');
+        % テーブルの作成
+        frame_rate_table =  array2table(frame_rate_list, 'RowNames', row_names, 'VariableNames', col_names);
+        % セーブ
+        save_data_fold_path = fullfile(save_data_common_path, 'Movie_frame_rate');
+        if not(exist(save_data_fold_path))
+            mkdir(save_data_fold_path)
+        end
+        save(fullfile(save_data_fold_path, [day_folders{ii} '_Movie_frame_rate_table.mat']), 'frame_rate_table');
     end
+end
+
+%% DLT法を実行して3次元座標を算出する
+if calc_DLT
+    
 end
 
 %% originalのvideoを読み込んで,指定したフレームレートの等倍速の動画を作成する
