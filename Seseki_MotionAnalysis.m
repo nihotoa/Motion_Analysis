@@ -18,186 +18,324 @@ pre: nothing
 post: coming soon...
 
 改善点:
-each_plotの中で，save_foldのpathに必要な変数を定義しているので，こっちの大元の関数で変数定義する様に変更する
+each_plotが冗長すぎる
 each_plotを書き換えたため,allplotでloadするデータの構造が変わっている -> それに応じたコードを書く
-each_plotにminimumにalignするかmaximumにalignするかのoptionを追加する(現状はminimumにalignされている)
 pick_up_imageもminimumなのかmaximumなのかはっきりさせる
+Sesekiだけではなく、他のサルでも同様の解析ができるようにディレクトリの構造から作り替える
+process_imageの保存先の変更
+plot_all_days_joint_angleのcmpの色を変える
+
+備考:
+plot_each_days_joint_angleまで改訂済み
 %}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clear;
 %% set param
 monkey_name = 'Se'; 
 real_name = 'Seseki';
+
+% please select the analysis which you want to perform
 conduct_joint_angle_analysis = 0;
-likelyhood_threshold = 0.9;
 plot_each_days_joint_angle = 0;
-plot_range = [-30, 30]; %window size of plot(used plot_each & plot_all)
-nanmean_type = 'stricted'; %'absolute'/'stricted' (whether you want to use 'nanmean' or not)
-trial_ratio_threshold = 0.6; %(if nanmean_type=="stricted") %at least, How many trials are necessary to plot
-plot_all_days_joint_angle = 0; 
-save_data_location = 'save_data';
-save_figure_loacation = 'save_figure';
-calc_max_min_angle = 0;
-pick_up_image = 0; % angleが最小となる時のimageをとってくる(静止画をセーブフォルダにしまうだけ)
-video_type = '.avi'; % 読み込み対象の動画の拡張子
-process_image = 1; %画像解析を行う(pick_up_imageで使用した画像を並べる & 重ね合わせる)
-image_type = '.png';
+plot_all_days_joint_angle = 1; 
+calc_max_min_angle = 0; % max,minの時の関節角度をcsvファイルにまとめて出力する
+pick_up_image = 0; % 各関節について、angleが最小となる時の画像の情報を抽出する
+process_image = 0; %画像解析を行う(pick_up_imageで使用した画像を並べる & 重ね合わせる)
 flactuation_detection = 0; %関節角度の軌跡の微分値から関節角度が変動するタイミングを検知してそのフレーム数とID(どの関節がどの方向にを著したもの)を出力する(各トライアルにおける変動するタイミングを記録するだけ)
+
+likelyhood_threshold = 0.9; % threshold of likelyhood for adopting coordinate values
+plus_direction = 'extensor'; % 'flexor'/'extensor'
+
+align_type = 'minimum'; % where should you want to align 0 ('minimum' / 'maximum')
+plot_range = [-30, 30]; % window size of plot(used plot_each & plot_all)
+nanmean_type = 'true'; %('true'/'false') 'true' => plot nanmean values regardless of 'trial_ratio_threshold', 'false' => replace value into NaN if not satisfied with 'trial_ratio_threshold'
+trial_ratio_threshold = 0.6; %(if nanmean_type=="false") %at least, How many trials are necessary to plot
+
+numToPick = 1;
+image_row_num = 1;
+
+video_type = '.avi'; % 読み込み対象の動画の拡張子
+image_type = '.png'; % 読み込み対象の画像の拡張子
+
 %% code section
-%% generates the data necessary for general motion analysis.
+% generates the data necessary for general motion analysis.
 disp('Please select the folder containing Seseki movie (Motion_analysis -> seseki_movie)')
 movie_fold_full_path = uigetdir();
 if movie_fold_full_path == 0
     error('user pressed cancel.');
 end
-movie_fold_path = strrep(movie_fold_full_path, fullfile(pwd, '/'), '');
-each_fold_names = dir(movie_fold_path);
+movie_fold_names = dir(movie_fold_full_path);
 
-% Extract only the names of the directories you need
-each_fold_names = extract_element_fold(each_fold_names, monkey_name);
-day_folders = extract_num_part(each_fold_names);
+% Extract only the names of the directories you need(EMG_analysis_latestのcodeの中に使えそうな関数があるかも)
+movie_fold_names = extract_element_fold(movie_fold_names, monkey_name);
+day_folders = extract_num_part(movie_fold_names);
 
 % Store the data needed for analysis in 'basic_data' (type:struct)
 basic_data = struct();  % make struct type variable (to store basic_data)
-for ii = 1:length(day_folders)
+for day_id = 1:length(day_folders)
     % Get csv file name
-    csv_list = dir([movie_fold_path '/' each_fold_names{ii} '/' '*.csv']);
+    ref_movie_fold_path = fullfile(movie_fold_full_path, movie_fold_names{day_id});
+    csv_list = dir(fullfile(ref_movie_fold_path, '*.csv'));
     csv_file_names = {csv_list.name}';
+
     % get each trial basic_data & processing these basic_data
     trial_num = length(csv_file_names);
-    for jj = 1:trial_num
-        load_file_path = fullfile(pwd, movie_fold_path, each_fold_names{ii}, csv_file_names{jj});
-        csv_contents = readcell(load_file_path, 'Range', [2,2]);
-        num_parts = regexp(csv_file_names{jj}, '\d+', 'match');
-        if jj == 1
-            basic_data.body_parts = unique({csv_contents{1, :}}, 'stable');
-            basic_data.data_type = unique({csv_contents{2, :}}, 'stable');
-            % num_partsの中で, '01'のindex番号をref_trial_idxに代入する
+
+    for trial_id = 1:trial_num
+        ref_trial_file_path = fullfile(ref_movie_fold_path, csv_file_names{trial_id});
+
+        % import the contents of csv file
+        csv_contents = readcell(ref_trial_file_path, 'Range', [2,2]);
+        num_parts = regexp(csv_file_names{trial_id}, '\d+', 'match');
+        if trial_id == 1
+            basic_data.body_parts = unique(csv_contents(1, :), 'stable');
+            basic_data.data_type = unique(csv_contents(2, :), 'stable');
+            % extract idx which is correspond to trial_num from 'num_parts';
             ref_trial_idx = find(cellfun(@(x) isequal(x, '01'), num_parts));
         end
         ref_trial = num_parts{ref_trial_idx};
-        eval(['basic_data.' monkey_name day_folders{ii} '.trial' ref_trial ' = cell2mat(csv_contents(3:end, :));']);
+        basic_data.([monkey_name day_folders{day_id}]).(['trial' ref_trial]) = cell2mat(csv_contents(3:end, :));
     end
 end
 
 %% conduct joint angle analysis
-if conduct_joint_angle_analysis
+if conduct_joint_angle_analysis == 1
     % prepare input data of 'calc_joint_angle'
     input_data = struct;
     input_data.body_parts = basic_data.body_parts; 
     input_data.data_type = basic_data.data_type;
 
-    for ii = 1:length(day_folders)
+    for day_id = 1:length(day_folders)
         % Store the result data in 'joint_angle_data_list'(This is generated separately for each day)
         joint_angle_data_list = struct();
-        trial_num = numel(fieldnames(eval(['basic_data.' monkey_name day_folders{ii}])));
+        trial_num = numel(fieldnames(basic_data.([monkey_name day_folders{day_id}])));
 
-        for jj = 1:trial_num
-            use_data = eval(['basic_data.' monkey_name day_folders{ii} '.' 'trial' sprintf('%02d', jj)]);
-            input_data.coodination_data = use_data;
+        for trial_id = 1:trial_num
+            ref_trial_data = basic_data.([monkey_name day_folders{day_id}]).(['trial' sprintf('%02d', trial_id)]);
+            input_data.coodination_data = ref_trial_data;
             if isempty(input_data.coodination_data)  % If there is no video content
                 continue;
             end
-            [target_joint, joint_angle_data] = calc_joint_angle(input_data, likelyhood_threshold);
-            eval(['joint_angle_data_list.trial' num2str(jj) ' = joint_angle_data;']) 
+            % calc joint angle
+            [target_joint, joint_angle_data] = calc_joint_angle(input_data, likelyhood_threshold, plus_direction);
+            joint_angle_data_list.(['trial' num2str(trial_id)]) = joint_angle_data;
         end
 
         % save data
-        specific_name = 'joint_angle';
-        save_fold_path = fullfile(pwd, save_data_location, specific_name);
-        if not(exist(fullfile(save_fold_path, day_folders{ii})))
-            mkdir(fullfile(save_fold_path, day_folders{ii}))
-        end
-        save(fullfile(save_fold_path, day_folders{ii}, 'joint_angle_data.mat'), "joint_angle_data_list", 'target_joint' )
+        save_fold_path = fullfile(pwd, 'save_data', 'joint_angle', [plus_direction '-plus'] , day_folders{day_id});
+        makefold(save_fold_path)
+        save(fullfile(save_fold_path, 'joint_angle_data.mat'), "joint_angle_data_list", 'target_joint' )
     end
 end
 
 %% plot the angle data of each days
 % caution!!: Please conduct joint_angle_analysis first
-if plot_each_days_joint_angle
-    joint_angle_data_location = fullfile(pwd, save_data_location, 'joint_angle');
-    for ii =1:length(day_folders)
-        joint_angle_data_path = fullfile(joint_angle_data_location,day_folders{ii}, 'joint_angle_data.mat');
-        load(joint_angle_data_path, 'joint_angle_data_list', 'target_joint')
+if plot_each_days_joint_angle == 1
+    joint_angle_data_location = fullfile(pwd, 'save_data', 'joint_angle', [plus_direction '-plus']);
+    for day_id =1:length(day_folders)
+        ref_date_joint_angle_data_path = fullfile(joint_angle_data_location, day_folders{day_id}, 'joint_angle_data.mat');
+        load(ref_date_joint_angle_data_path, 'joint_angle_data_list', 'target_joint')
         % plot figure & save plot data
         switch nanmean_type
-            case 'absolute'
-                each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range);
-            case 'stricted'
-                each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range, trial_ratio_threshold);
+            case 'true'
+                each_plot(joint_angle_data_list, target_joint, day_folders{day_id}, plot_range, align_type, plus_direction);
+            case 'false'
+                each_plot(joint_angle_data_list, target_joint, day_folders{day_id}, plot_range, align_type, plus_direction, trial_ratio_threshold);
         end
-        % each_plot(joint_angle_data_list, target_joint, day_folders{ii}, plot_range)
     end
 end
 
 %% plot the angle data of all days
-% caution!!:Please conduct plot_each_joint_angle
-% 使用するデータを,nanmean考慮にするのか,restrictにするのかで分ける
-% eachと同じように2*2の図を作る
-% strictedでloadしたデータに2*2が反映されていない(main_MPがない) -> eachのsave sectionを確認
-% save_stack_dataとsave_stdデータがうまく設定されていないのが原因(関数への入出力引数をうまく調整する or trimmed_aligned_all_trial_dataを渡す)
-if plot_all_days_joint_angle
-    common_load_data_location = fullfile(pwd, save_data_location, 'trimmed_joint_angle',  [num2str(plot_range(1)) '_to_' num2str(plot_range(2)) '(frames)']);
+%{
+caution!!:Please conduct plot_each_joint_angle firstly
+eachと同じように2*2の図を作る
+strictedでloadしたデータに2*2が反映されていない(main_MPがない) -> eachのsave sectionを確認
+=>save_stack_dataとsave_stdデータがうまく設定されていないのが原因(関数への入出力引数をうまく調整する or trimmed_aligned_all_trial_dataを渡す)
+%}
+if plot_all_days_joint_angle == 1
+    % setting of path for loading joint angle data
+    common_load_data_location = fullfile(pwd, 'save_data', 'trimmed_joint_angle', [plus_direction '-plus'], align_type, [num2str(plot_range(1)) '_to_' num2str(plot_range(2)) '(frames)']);
+    day_num = length(day_folders);
+
+    % setting of figure & colormap & empty array (to store area and displacement)
+    calc_value_struct = struct();
     figure('Position',[0 0 1200 600]);
-    % create color map
-    cmp = colormap(jet(length(day_folders)));
-    for ii = 1:length(day_folders)
+    cmp = zeros(day_num, 3);
+    cmp(1, 3) = 1; % blue for 'phase A'
+    post_Rcolor =linspace(80, 255, day_num-1)';
+    cmp(2:end, 1) = post_Rcolor / 255;
+
+    % plot mean value of joint angle of each date
+    for day_id = 1:length(day_folders)
+        % load mean value of joint angle
         switch nanmean_type
-            case 'absolute'
-                load(fullfile(common_load_data_location, day_folders{ii},  ['trimmed_joint_angle_data(std).mat']), 'target_joint', 'trimmed_joint_angle_data');
-            case 'stricted'
-                load(fullfile(common_load_data_location, day_folders{ii},  ['trimmed_joint_angle_data(std)_ratio_above_' num2str(trial_ratio_threshold) '.mat']), 'target_joint', 'trimmed_joint_angle_data');
+            case 'true'
+                load(fullfile(common_load_data_location, 'nanmean', day_folders{day_id},  'trimmed_joint_angle_data.mat'), 'target_joint', 'trimmed_joint_angle_data');
+            case 'false'
+                load(fullfile(common_load_data_location, 'mean', day_folders{day_id},  ['trimmed_joint_angle_data(ratio_threshold=' num2str(trial_ratio_threshold) ').mat']), 'target_joint', 'trimmed_joint_angle_data');
         end
-        color_value = cmp(ii,:);
-        for jj = 1:length(target_joint) %main_joint
-            for kk = 1:length(target_joint) %sub_joint
-                subplot(length(target_joint),length(target_joint), length(target_joint)*(kk-1)+jj);
+        
+        if day_id == 1
+            target_joint_num = length(target_joint);
+
+            % add field to store data
+            calc_value_struct.area.vs_left = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
+            calc_value_struct.area.vs_right = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
+            calc_value_struct.displacement.vs_left = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
+            calc_value_struct.displacement.vs_right = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
+        end
+        
+        % plot the joint angle of each joint of ref_day
+        color_value = cmp(day_id,:);
+        x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1)); % 厳密にはこれ違う
+
+        for main_joint_idx = 1:target_joint_num %main_joint
+            for sub_joint_idx = 1:target_joint_num %sub_joint
+                % decide location of subplot
+                row_idx = sub_joint_idx;
+                col_idx = main_joint_idx;
+                subplot_idx = target_joint_num*(row_idx-1) + col_idx;
+                subplot(target_joint_num, target_joint_num, subplot_idx);
+                hold on;
+
+                % extarct target anglendata
+                plot_data = trimmed_joint_angle_data.(['main_' target_joint{main_joint_idx}]).(target_joint{sub_joint_idx});
+                
+                % calc displacement & area
+                first_idx = 1; 
+                last_idx =  length(plot_data);
+                criterion_idx = last_idx/2;
+     
+                calc_value_struct.displacement.vs_left{row_idx, col_idx}(day_id) = abs(plot_data(criterion_idx) - plot_data(first_idx));
+                calc_value_struct.displacement.vs_right{row_idx, col_idx}(day_id) = abs(plot_data(criterion_idx) - plot_data(last_idx));
+                
+                calc_value_struct.area.vs_left{row_idx, col_idx}(day_id) = abs(sum(plot_data(first_idx:criterion_idx) - plot_data(criterion_idx)));
+                calc_value_struct.area.vs_right{row_idx, col_idx}(day_id) = abs(sum(plot_data(criterion_idx:last_idx) - plot_data(criterion_idx)));
+
+                % plot
+                plot(x, plot_data, 'Color',color_value, 'LineWidth',1.4, 'DisplayName', day_folders{day_id});
                 hold on
+
                 % decorate
-                if ii == 1
+                if day_id == 1
+                    xlim(plot_range);
                     grid on;
                     xlabel('elapsed time(frame)', 'FontSize',15);
                     ylabel('joint angle(degree)', 'FontSize', 15);
                     additional_string = '';
-                    if jj == kk
+                    if main_joint_idx == sub_joint_idx
                         additional_string = ' (main)';
                     end
-                    title([target_joint{kk} ' joint angle' additional_string], 'FontSize',15)
+                    title([target_joint{sub_joint_idx} ' joint angle' additional_string], 'FontSize',15)
                 end
-                plot_data = eval(['trimmed_joint_angle_data.main_' target_joint{jj} '.' target_joint{kk}]);
-                x = linspace(plot_range(1), plot_range(2), plot_range(2)-plot_range(1));
-                plot(x, plot_data, 'Color',color_value, 'LineWidth',1.4, 'DisplayName', day_folders{ii});
                 hold off
-                if ii==length(day_folders) && jj==length(target_joint)
-                    legend()
+
+                % attach legend
+                if day_id==length(day_folders) && main_joint_idx==target_joint_num
+                    h = legend();
+                    set(h, 'Location', 'eastoutside');
+                    set(h, 'Position', [0.91, 0.91, 0.05, 0.05])
                 end
             end
         end
     end
+    % attatch langend
+    sgtitle([plus_direction '-plus, ' align_type '-align'], fontsize=20)
+
     % save
-    analysis_type = 'joint_angle';
-    specific_name = 'all_days';
-    save_figure_fold_path = fullfile(pwd, save_figure_loacation, analysis_type, specific_name);
-    if not(exist(save_figure_fold_path))
-        mkdir(save_figure_fold_path)
-    end
     switch nanmean_type
-        case 'stricted'
-                    saveas(gcf, fullfile(save_figure_fold_path, 'all_day_joint_angle(stricted).png'))
-                    saveas(gcf, fullfile(save_figure_fold_path, 'all_day_joint_angle(stricted).fig'))
-        case 'absolute'
-                saveas(gcf, fullfile(save_figure_fold_path, 'all_day_joint_angle.png'))
-                saveas(gcf, fullfile(save_figure_fold_path, 'all_day_joint_angle.fig'))
-    end 
+        case 'true'
+            mean_type_string = 'nanmean';
+            figure_file_name = 'all_day_joint_angle(nanmean)';
+        case 'false'
+            mean_type_string = 'mean';
+            figure_file_name = 'all_day_joint_angle';
+    end
+
+    save_figure_fold_path = fullfile(pwd, 'save_figure', 'joint_angle', 'all_days', [plus_direction '-plus'], align_type, mean_type_string);   
+    makefold(save_figure_fold_path)
+    saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.png']))
+    saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.fig']))
     close all;
+    
+
+    % plot value of displacement and area
+    if strcmp(nanmean_type, 'true')
+        calc_type = {'area', 'displacement'};
+        compair_phase_type = {'vs_left', 'vs_right'};
+    
+        % elapsed date list (for x-axis data)
+        [elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
+        post_first_elapsed_date = elapsed_date_list(find(elapsed_date_list > 0, 1 ));
+    
+        for calc_type_id = 1:length(calc_type)
+            for compair_phase_id = 1:length(compair_phase_type)
+                figure('Position',[0 0 1200 600]);
+                ref_term_data = calc_value_struct.(calc_type{calc_type_id}).(compair_phase_type{compair_phase_id});
+                [row_num, col_num] = size(ref_term_data);
+    
+                % make each figure
+                for row_id = 1:row_num
+                    for col_id = 1:col_num
+                        ref_joint_data = ref_term_data{row_id, col_id};
+                        max_value = max(ref_joint_data);
+                        subplot_idx = target_joint_num * (row_id-1) + col_id;
+                        subplot(row_num, col_num, subplot_idx)
+                        
+                        % plot 
+                        hold on
+                        plot(elapsed_date_list, ref_joint_data, LineWidth=1.2);
+                        hold on;
+                        plot(elapsed_date_list, ref_joint_data, 'o');
+                    
+                        % decoration
+                        xlim([elapsed_date_list(1) elapsed_date_list(end)]);
+                        xlabel('elapsed date from TT[day]')
+                        grid on;
+                        rectangle('Position', [0 0, post_first_elapsed_date - 1, max_value + (max_value * 0.1)], 'FaceColor',[1, 1, 1], 'EdgeColor', 'K', 'LineWidth',1.2);
+                        ylim([0 max_value + (max_value * 0.1)]);
+                        additional_string = '';
+                        if row_id == col_id
+                            additional_string = ' (main)';
+                        end
+                        title([target_joint{row_id} ' joint angle' additional_string], 'FontSize',15)
+                        hold off;
+                        hold off;
+                    end
+                end
+                sgtitle([calc_type{calc_type_id} ' (', plus_direction '-plus, ' align_type '-align, ' compair_phase_type{compair_phase_id} ')'], 'Interpreter', 'none', fontsize=20)
+
+                % save
+                switch nanmean_type
+                    case 'true'
+                        figure_file_name = [calc_type{calc_type_id} ' of joint angle(nanmean)'];
+                    case 'false'
+                      figure_file_name = [calc_type{calc_type_id} ' of joint angle'];  
+                end
+            
+                save_figure_fold_path = fullfile(pwd, 'save_figure', calc_type{calc_type_id}, 'all_days', [plus_direction '-plus'], align_type, compair_phase_type{compair_phase_id});   
+                makefold(save_figure_fold_path)
+                saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.png']))
+                saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.fig']))
+                close all;
+            end
+        end
+    end
+
 end
 
 %%  calcurate max & min angle of each joint
 % caution!!:Please conduct conduct_joint_angle_analysis firstly
-if calc_max_min_angle
-    common_load_data_location = fullfile(pwd, save_data_location, 'joint_angle');
-    output_data1 = zeros(length(day_folders), 5); % MP
-    output_data2 = zeros(length(day_folders), 5); % Wrist
+if calc_max_min_angle == 1
+    common_load_data_location = fullfile(pwd, 'save_data', 'joint_angle');
+
+    % prepare empty array
+    output_data = struct();
+    for joint_idx = 1:length(target_joint)
+        output_data.([target_joint{joint_idx}]) = zeros(length(day_folders), 5);
+    end
+
+    % store max & minimum joint angle of each joint
     for ii = 1:length(day_folders)
         load_data_path = fullfile(common_load_data_location, day_folders{ii}, 'joint_angle_data.mat');
         load(load_data_path, 'joint_angle_data_list', 'target_joint');
@@ -207,7 +345,7 @@ if calc_max_min_angle
             max_data_list = zeros(trial_num, 1);
             min_data_list = zeros(trial_num, 1);
             for kk = 1:trial_num
-                ref_data =  eval(['joint_angle_data_list.' trial_names{kk} '.' target_joint{jj}]);
+                ref_data = joint_angle_data_list.(trial_names{kk}).(target_joint{jj});
                 max_data_list(kk) = max(ref_data);
                 min_data_list(kk) = min(ref_data);
             end
@@ -217,18 +355,19 @@ if calc_max_min_angle
             min_mean = round(mean(min_data_list),1);
             min_std =round( std(min_data_list),1);
             diff = round(max_mean-min_mean ,1);
-            eval(['output_data' num2str(jj) '(ii ,1) = max_mean;'])
-            eval(['output_data' num2str(jj) '(ii ,2) = min_mean;'])
-            eval(['output_data' num2str(jj) '(ii ,3) = max_std;'])
-            eval(['output_data' num2str(jj) '(ii ,4) = min_std;'])
-            eval(['output_data' num2str(jj) '(ii ,5) = diff;'])
+
+            output_data.(target_joint{jj})(ii, 1) = max_mean;
+            output_data.(target_joint{jj})(ii, 2) = min_mean;
+            output_data.(target_joint{jj})(ii, 3) = max_std;
+            output_data.(target_joint{jj})(ii, 4) = min_std;
+            output_data.(target_joint{jj})(ii, 5) = diff;
         end
     end
     % create table & extract table
     row_names = day_folders;
     col_names = {'max_angle[degree]', 'min_angle[degree]', 'max_angle_std', 'min_angle_std', 'diff_max_min'};
     for ii = 1:length(target_joint)
-        ref_output = eval(['output_data' num2str(ii)]);
+        ref_output = output_data.(target_joint{ii});
         output_table = array2table(ref_output, 'RowNames', row_names, 'VariableNames', col_names);
         % Excelファイルの保存パスを指定
         excelFileName = [target_joint{ii}  '_joint_angle_data.xlsx'];
@@ -240,19 +379,20 @@ end
 
 %% 
 % Please do 'conduct_joint_angle_analysis' first
-if pick_up_image
+if pick_up_image == 1
     for ii = 1:length(day_folders)
-        joint_angle_data_path = fullfile(pwd, save_data_location, 'joint_angle', day_folders{ii}, 'joint_angle_data.mat');
+        joint_angle_data_path = fullfile(pwd, 'save_data', 'joint_angle', [plus_direction '-plus'], day_folders{ii}, 'joint_angle_data.mat');
         load(joint_angle_data_path, 'joint_angle_data_list', 'target_joint')
         % pick up images & save thse images in save_data
-        output_images = pick_up_specific_image(joint_angle_data_list, target_joint, day_folders{ii}, real_name, video_type);
+        output_images = pick_up_specific_image(joint_angle_data_list, target_joint, day_folders{ii}, real_name, video_type, plus_direction, align_type);
         % save specific figure
         for jj = 1:length(target_joint) %main joint
             save_figure_fold_path = fullfile(pwd, 'save_figure', 'specific_images', 'minimum', target_joint{jj}, day_folders{ii});
-            if not(exist(save_figure_fold_path))
+            if not(exist(save_figure_fold_path, "dir"))
                 mkdir(save_figure_fold_path)
             end
-            ref_images = eval(['output_images.main_' target_joint{jj}]);
+
+            ref_images = output_images.(['main_' target_joint{jj}]);
             trial_num = length(ref_images);
             for kk = 1:trial_num
                 ref_image = ref_images{kk};
@@ -277,11 +417,11 @@ minimumとmaximumの場合で場合分する
 プロットする画像の枚数を定義(numToPickの定義)する部分はヘッダーの変数定義で行う
 無作為に選ぶと,解析のたびに結果が変わってしまうので,対応を考える
 %}
-if process_image
+if process_image == 1
     % load 'target_joint'
-    joint_angle_data_location = fullfile(pwd, save_data_location, 'joint_angle');
+    joint_angle_data_location = fullfile(pwd, 'save_data', 'joint_angle', [plus_direction '-plus']);
     joint_angle_data_path = fullfile(joint_angle_data_location,day_folders{1}, 'joint_angle_data.mat');
-    load(joint_angle_data_path,'target_joint')
+    load(joint_angle_data_path, 'target_joint')
     % get images names
     common_path = fullfile(pwd, 'save_figure', 'specific_images', 'minimum');
     for ii = 1:length(target_joint)
@@ -291,15 +431,16 @@ if process_image
             % 無作為に9枚の画像を選択する
             % 1から122までの整数を生成
             image_num = length(output_file_names);
-            % 9つの整数を無作為に選ぶ
-            numToPick = 9;
+            % numToPick個の整数を無作為に選ぶ
             randomIntegers = sort(datasample(1:image_num, numToPick, 'Replace', false));
-            plot_images = cell(3,3); %9この画像を3*3で出力する
+            %画像をimage_row_num * ceil(numToPick/image_row_num)で出力する
+            image_col_num = ceil(numToPick / image_row_num);
+            plot_images = cell(image_row_num, image_col_num); 
             for kk = 1:numToPick
                 plot_images{kk} = imread(fullfile(file_path,output_file_names{randomIntegers(kk)}));
             end
             % montageを表示
-            montage(plot_images, 'Size', [3, 3]); % 3行3列のグリッド
+            montage(plot_images, 'Size', [image_row_num, image_col_num]); % 3行3列のグリッド
             title([day_folders{jj} '-' target_joint{ii} '-' 'minimum'], 'FontSize',22)
             montage_fig = gcf;
             % 画像を順に重ね合わせる
@@ -314,6 +455,7 @@ if process_image
             imshow(average_images);
             set(imfuse_figure, 'Position', [100, 100, 1200, 1000]);
             title([day_folders{jj} '-' target_joint{ii} '-' 'minimum'], 'FontSize',22)
+
             % figureのセーブ
             figure(montage_fig);
             saveas(gcf, fullfile(file_path, 'arranged_pick_up_images.png'))

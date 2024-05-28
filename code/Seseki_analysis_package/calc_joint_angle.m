@@ -11,58 +11,67 @@ angle data(type:double) -> (+) flexor, (-) extensor
 %}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [target_joints, output_data] = calc_joint_angle(input_data, likelyhood_threshold)
+function [target_joints, output_data] = calc_joint_angle(input_data, likelyhood_threshold, plus_direction)
 body_parts = input_data.body_parts;
 target_joints = body_parts(2:end-1);
 coodination_data = input_data.coodination_data;
 
-% Excluding low coodinate values of likelyhood
+%% change value into 'NaN' if not satisfied with threshold
 body_parts_num = length(body_parts);
-for ii = 1: body_parts_num
-    ref_likelyhood = coodination_data(:, 3*ii);
-    for jj = 1:length(ref_likelyhood)
-        if ref_likelyhood(jj) < likelyhood_threshold
-            coodination_data(jj, 3*ii-2:3*ii-1) = NaN;
+for body_parts_idx = 1: body_parts_num
+    ref_likelyhood = coodination_data(:, 3*body_parts_idx);
+    for frame_idx = 1:length(ref_likelyhood)
+        if ref_likelyhood(frame_idx) < likelyhood_threshold
+            coodination_data(frame_idx, 3*body_parts_idx-2:3*body_parts_idx-1) = NaN;
         end
     end
 end
 
+%% calcurate  the angle of each joint
 % Creating a data structure to store output information
 output_data = struct();
-% calculate angle of each joint
-for ii = 2:length(body_parts)-1
+
+for target_joint_idx = 2:length(body_parts)-1
     % extrart each joint angle data(only extract necessary joint angle (3 joint))
-    prev_joint_x_col = 3*(ii-2)+1;
-    ref_joint_x_col = 3*(ii-1)+1;
-    next_joint_x_col = 3*(ii)+1;
-    prev_joint_data = coodination_data(:, prev_joint_x_col:prev_joint_x_col+1);
-    ref_joint_data = coodination_data(:, ref_joint_x_col:ref_joint_x_col+1);
-    next_joint_data = coodination_data(:, next_joint_x_col:next_joint_x_col+1);
+    prev_joint_x_idx = 3*(target_joint_idx-2)+1;
+    ref_joint_x_idx = 3*(target_joint_idx-1)+1;
+    next_joint_x_idx = 3*(target_joint_idx)+1;
+
+    % obrain (x, y) coodinates from 3 points which is needed for calcurating joint angle
+    prev_joint_data = coodination_data(:, prev_joint_x_idx:prev_joint_x_idx+1);
+    ref_joint_data = coodination_data(:, ref_joint_x_idx:ref_joint_x_idx+1);
+    next_joint_data = coodination_data(:, next_joint_x_idx:next_joint_x_idx+1);
 
     % create the vector
     next_to_ref_vector_list = ref_joint_data - next_joint_data;
     ref_to_prev_vector_list = prev_joint_data - ref_joint_data;
 
-    % Calculate angle for each frame
+    % calcurate the joint angle from each frame
     [frame_num, ~] = size(coodination_data);
-    eval(['output_data.' body_parts{ii} ' = zeros(' num2str(frame_num) ',1);']);
-    for jj = 1:frame_num
-        next_to_ref_vector =  next_to_ref_vector_list(jj, :);
-        ref_to_prev_vector = ref_to_prev_vector_list(jj, :);
+    output_data.(body_parts{target_joint_idx}) = zeros(frame_num, 1);
 
-        % calc angle and determine the rorate direction(flexor or extensor)
-        x_unit_vector = [1 0];
+    for frame_idx = 1:frame_num
+        next_to_ref_vector =  next_to_ref_vector_list(frame_idx, :);
+        ref_to_prev_vector = ref_to_prev_vector_list(frame_idx, :);
+
+        % calc angle and determine the rotate direction(flexor or extensor)
         next_to_ref_unit_vector = (next_to_ref_vector / norm(next_to_ref_vector));
         ref_to_prev_unit_vector = (ref_to_prev_vector / norm(ref_to_prev_vector));
-        vs_x_angle = acos(next_to_ref_unit_vector(1)); % For rotation of coordinates, express in radian
+        
+        % assign x, y component of unit vector in each variable
+        x_component = next_to_ref_unit_vector(1);
+        y_component = next_to_ref_unit_vector(2);
+        vs_x_angle = acos(x_component); % For rotation of coordinates, express in radian
 
-        %Determining the direction of rotation (Please note that the y-axis points downwards)
-        if next_to_ref_unit_vector(2) < 0
+        %% Determining the direction of rotation (Please note that the y-axis points downwards)
+
+        % determine in which direction the unit vector of 'next_to_ref_vactor' shoud be rotated to make it a unit vector along the x axis([1, 0])
+        if y_component < 0
             rotation_direction = 1;  % Turn in the + direction
-        elseif next_to_ref_unit_vector(2) > 0
+        elseif y_component > 0
             rotation_direction = -1;  % Turn in the - direction
-        elseif isnan(next_to_ref_unit_vector(2))
-            eval(['output_data.' body_parts{ii} '(' num2str(jj) ') = NaN;'])
+        elseif isnan(y_component) % In the case the value of marker point includes NaN value
+            output_data.(body_parts{target_joint_idx})(frame_idx) = NaN;
             continue; 
         end
 
@@ -70,18 +79,23 @@ for ii = 2:length(body_parts)-1
         % rotate coordinates
         Rotation_matrix = [ cos(theta), -1*sin(theta);
                                        sin(theta), cos(theta)];                      
-
         rotated_ref_to_prev_unit_vector = Rotation_matrix * ref_to_prev_unit_vector';
-        angle =  (acos(rotated_ref_to_prev_unit_vector(1))) * (180/pi); %to confirm whether angle is correct
 
-        if rotated_ref_to_prev_unit_vector(2) > 0
-                flag = 1;  % flexor(+)  
-        elseif rotated_ref_to_prev_unit_vector(2) < 0
-               flag = -1; %extensor(-)
+        rotated_x_component = rotated_ref_to_prev_unit_vector(1);
+        rotated_y_component = rotated_ref_to_prev_unit_vector(2);
+        angle =  (acos(rotated_x_component)) * (180/pi); %to confirm whether angle is correct
+
+        if rotated_y_component > 0
+            flag = 1;  % flexor(+)  
+        elseif rotated_y_component < 0
+            flag = -1; % extensor(-)
+        end
+        if strcmp(plus_direction, 'extensor')
+            flag = -1 * flag;
         end
         angle = flag * angle;  % Consider extension and flexion
         % store the calculated data
-        eval(['output_data.' body_parts{ii} '(' num2str(jj) ') = angle;'])
+        output_data.(body_parts{target_joint_idx})(frame_idx) = angle;
     end
 end
 end

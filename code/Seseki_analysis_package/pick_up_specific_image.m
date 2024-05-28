@@ -4,13 +4,15 @@ joint_angle_data_list:
 target_joint
 ref_day
 subject_name
+
+evalなくせ
 %}
 
-function output_images = pick_up_specific_image(joint_angle_data_list, target_joint, ref_day, subject_name, video_type)
+function output_images = pick_up_specific_image(joint_angle_data_list, target_joint, ref_day, subject_name, video_type, plus_direction, align_type)
 trial_num = numel(fieldnames(joint_angle_data_list));
 % create structure array
 output_images = struct();
-frame_idx_data_path = fullfile(pwd, 'save_data', 'frame_idx', 'minimum', ref_day);
+frame_idx_data_path = fullfile(pwd, 'save_data', 'frame_idx', [plus_direction '-plus'], align_type, ref_day);
 load(fullfile(frame_idx_data_path, 'frame_idx_list.mat'), 'frame_idx_list')
 plot_count = 0;
 % store the data

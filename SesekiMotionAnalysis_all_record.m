@@ -17,6 +17,10 @@ Performs all processing related to Seseki behavior analysis
 pre: nothing
 post: coming soon...
 
+注意点：
+Seseki_MotionAnalysisとの違いは、各タイミング付近のmotionを結果としてプロットしているところ。(EMG解析と同じ時系列で区切って解析)
+ただし、各トライアルにおいける各タイミングの判断は目視で行なってmanualでexcelファイルに書き込んだフレーム数を使っているので、厳密性はかなり低い
+
 改善点:
 each_plotの中で，save_foldのpathに必要な変数を定義しているので，こっちの大元の関数で変数定義する様に変更する
 each_plotを書き換えたため,allplotでloadするデータの構造が変わっている -> それに応じたコードを書く
@@ -31,20 +35,20 @@ real_name = 'Seseki';
 save_data_location = 'save_data';
 save_figure_loacation = 'save_figure';
 
-conduct_joint_angle_analysis = 0;
+conduct_joint_angle_analysis = 1;
 manual_trim_window = [-15 15]; % Period to trim [%] (entire task range is taken as 100%)
 likelyhood_threshold = 0.9;
 
-plot_each_joint_angle = 0;
+plot_each_joint_angle = 1;
 figure_type = 'mean'; % 'stack' / 'mean' 
 add_std_background = 0;
 trial_ratio_threshold = 0.6; %(if nanmean_type=="stricted") %at least, How many trials are necessary to plot
-plot_timing_num = [1,2,3,4];
+plot_timing_num = [1, 2, 3, 4];
 timing_name = {'lever1 on', 'lever1 off', 'photo on', 'photo off'};
 
 pick_up_each_timing_image = 0; % 各タイミングの静止画を動画から抽出して,構造体に保存する
 
-process_image = 1; %画像解析を行う(pick_up_imageで使用した画像を並べる & 重ね合わせる)
+process_image = 0; %画像解析を行う(pick_up_imageで使用した画像を並べる & 重ね合わせる)
 image_type = '.png';
 
 % plot_all_days_joint_angle = 0; 
@@ -196,8 +200,10 @@ if process_image
         end
         figure(montage_fig);
         saveas(gcf, fullfile(save_fig_fold, ['arranged_timing' num2str(ii) '_images.png']));
+        saveas(gcf, fullfile(save_fig_fold, ['arranged_timing' num2str(ii) '_images.fig']));
         figure(imfuse_figure)
         saveas(gcf, fullfile(save_fig_fold, ['stacked_timing' num2str(ii) '_images.png']));
+        saveas(gcf, fullfile(save_fig_fold, ['stacked_timing' num2str(ii) '_images.fig']));
         close all;
    end
 end
