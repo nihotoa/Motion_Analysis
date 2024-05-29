@@ -18,7 +18,7 @@ pre: nothing
 post: coming soon...
 
 注意点：
-Seseki_MotionAnalysisとの違いは、各タイミング付近のmotionを結果としてプロットしているところ。(EMG解析と同じ時系列で区切って解析)
+Seseki_MotionAnalysisとの違いは、各タイミング(lever1 on, leve1 off)付近のmotionを結果としてプロットしているところ。(EMG解析と同じ時系列で区切って解析)
 ただし、各トライアルにおいける各タイミングの判断は目視で行なってmanualでexcelファイルに書き込んだフレーム数を使っているので、厳密性はかなり低い
 
 改善点:

@@ -46,7 +46,7 @@ flactuation_detection = 0; %関節角度の軌跡の微分値から関節角度�
 likelyhood_threshold = 0.9; % threshold of likelyhood for adopting coordinate values
 plus_direction = 'extensor'; % 'flexor'/'extensor'
 
-align_type = 'minimum'; % where should you want to align 0 ('minimum' / 'maximum')
+align_type = 'maximum'; % where should you want to align 0 ('minimum' / 'maximum')
 plot_range = [-30, 30]; % window size of plot(used plot_each & plot_all)
 nanmean_type = 'true'; %('true'/'false') 'true' => plot nanmean values regardless of 'trial_ratio_threshold', 'false' => replace value into NaN if not satisfied with 'trial_ratio_threshold'
 trial_ratio_threshold = 0.6; %(if nanmean_type=="false") %at least, How many trials are necessary to plot
@@ -183,6 +183,7 @@ if plot_all_days_joint_angle == 1
             calc_value_struct.area.vs_right = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
             calc_value_struct.displacement.vs_left = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
             calc_value_struct.displacement.vs_right = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num);
+            calc_value_struct.focus_timing_angle = repmat({zeros(1, day_num)}, target_joint_num, target_joint_num); 
         end
         
         % plot the joint angle of each joint of ref_day
@@ -201,7 +202,7 @@ if plot_all_days_joint_angle == 1
                 % extarct target anglendata
                 plot_data = trimmed_joint_angle_data.(['main_' target_joint{main_joint_idx}]).(target_joint{sub_joint_idx});
                 
-                % calc displacement & area
+                % calc and store the value of displacement & area & angle of focus timing
                 first_idx = 1; 
                 last_idx =  length(plot_data);
                 criterion_idx = last_idx/2;
@@ -211,7 +212,8 @@ if plot_all_days_joint_angle == 1
                 
                 calc_value_struct.area.vs_left{row_idx, col_idx}(day_id) = abs(sum(plot_data(first_idx:criterion_idx) - plot_data(criterion_idx)));
                 calc_value_struct.area.vs_right{row_idx, col_idx}(day_id) = abs(sum(plot_data(criterion_idx:last_idx) - plot_data(criterion_idx)));
-
+                
+                calc_value_struct.focus_timing_angle{row_idx, col_idx}(day_id) = plot_data(criterion_idx);
                 % plot
                 plot(x, plot_data, 'Color',color_value, 'LineWidth',1.4, 'DisplayName', day_folders{day_id});
                 hold on
@@ -261,7 +263,7 @@ if plot_all_days_joint_angle == 1
 
     % plot value of displacement and area
     if strcmp(nanmean_type, 'true')
-        calc_type = {'area', 'displacement'};
+        calc_type = {'area', 'displacement', 'focus_timing_angle'};
         compair_phase_type = {'vs_left', 'vs_right'};
     
         % elapsed date list (for x-axis data)
@@ -269,55 +271,18 @@ if plot_all_days_joint_angle == 1
         post_first_elapsed_date = elapsed_date_list(find(elapsed_date_list > 0, 1 ));
     
         for calc_type_id = 1:length(calc_type)
-            for compair_phase_id = 1:length(compair_phase_type)
-                figure('Position',[0 0 1200 600]);
-                ref_term_data = calc_value_struct.(calc_type{calc_type_id}).(compair_phase_type{compair_phase_id});
-                [row_num, col_num] = size(ref_term_data);
-    
-                % make each figure
-                for row_id = 1:row_num
-                    for col_id = 1:col_num
-                        ref_joint_data = ref_term_data{row_id, col_id};
-                        max_value = max(ref_joint_data);
-                        subplot_idx = target_joint_num * (row_id-1) + col_id;
-                        subplot(row_num, col_num, subplot_idx)
-                        
-                        % plot 
-                        hold on
-                        plot(elapsed_date_list, ref_joint_data, LineWidth=1.2);
-                        hold on;
-                        plot(elapsed_date_list, ref_joint_data, 'o');
-                    
-                        % decoration
-                        xlim([elapsed_date_list(1) elapsed_date_list(end)]);
-                        xlabel('elapsed date from TT[day]')
-                        grid on;
-                        rectangle('Position', [0 0, post_first_elapsed_date - 1, max_value + (max_value * 0.1)], 'FaceColor',[1, 1, 1], 'EdgeColor', 'K', 'LineWidth',1.2);
-                        ylim([0 max_value + (max_value * 0.1)]);
-                        additional_string = '';
-                        if row_id == col_id
-                            additional_string = ' (main)';
-                        end
-                        title([target_joint{row_id} ' joint angle' additional_string], 'FontSize',15)
-                        hold off;
-                        hold off;
-                    end
+            calc_type_name = calc_type{calc_type_id};
+            if strcmp(calc_type_name, 'focus_timing_angle')
+                ref_term_data = calc_value_struct.(calc_type{calc_type_id});
+                % plot figure
+                plot_phase_figure(ref_term_data, target_joint_num, elapsed_date_list, post_first_elapsed_date, target_joint, plus_direction, align_type, nanmean_type, calc_type_name);
+            else
+                for compair_phase_id = 1:length(compair_phase_type)
+                    ref_term_data = calc_value_struct.(calc_type{calc_type_id}).(compair_phase_type{compair_phase_id});
+                    compare_phase_name = compair_phase_type{compair_phase_id};
+                    % plot figure
+                    plot_phase_figure(ref_term_data, target_joint_num, elapsed_date_list, post_first_elapsed_date, target_joint, plus_direction, align_type, nanmean_type, calc_type_name, compare_phase_name);
                 end
-                sgtitle([calc_type{calc_type_id} ' (', plus_direction '-plus, ' align_type '-align, ' compair_phase_type{compair_phase_id} ')'], 'Interpreter', 'none', fontsize=20)
-
-                % save
-                switch nanmean_type
-                    case 'true'
-                        figure_file_name = [calc_type{calc_type_id} ' of joint angle(nanmean)'];
-                    case 'false'
-                      figure_file_name = [calc_type{calc_type_id} ' of joint angle'];  
-                end
-            
-                save_figure_fold_path = fullfile(pwd, 'save_figure', calc_type{calc_type_id}, 'all_days', [plus_direction '-plus'], align_type, compair_phase_type{compair_phase_id});   
-                makefold(save_figure_fold_path)
-                saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.png']))
-                saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.fig']))
-                close all;
             end
         end
     end
