@@ -2,6 +2,7 @@
 %{
 [function]
 calculate the joint angle with using inputed coodination data
+this function use image coordination data obtained from DeepLabCut
 
 [input & ouput]
 input: input_data(type:string) -> this is created in

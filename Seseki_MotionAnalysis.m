@@ -9,7 +9,7 @@ Performs all processing related to Seseki behavior analysis
 [caution!!]
 > this code is created for Seseki movie analaysis. So, this code may not be compatible with other analyses.
 > The functions used in this code are stored in the following location
-  path: Motion_analysis/code/Seseki_analysis_package
+path: Motion_analysis/code/Seseki_analysis_package
 
 [saved basic_data location]
 
@@ -35,9 +35,9 @@ monkey_name = 'Se';
 real_name = 'Seseki';
 
 % please select the analysis which you want to perform
-conduct_joint_angle_analysis = 0;
+conduct_joint_angle_analysis = 1;
 plot_each_days_joint_angle = 0;
-plot_all_days_joint_angle = 1; 
+plot_all_days_joint_angle = 0; 
 calc_max_min_angle = 0; % max,minの時の関節角度をcsvファイルにまとめて出力する
 pick_up_image = 0; % 各関節について、angleが最小となる時の画像の情報を抽出する
 process_image = 0; %画像解析を行う(pick_up_imageで使用した画像を並べる & 重ね合わせる)
@@ -64,7 +64,7 @@ movie_fold_full_path = uigetdir();
 if movie_fold_full_path == 0
     error('user pressed cancel.');
 end
-movie_fold_names = dir(movie_fold_full_path);
+movie_fold_names = dirEx(movie_fold_full_path);
 
 % Extract only the names of the directories you need(EMG_analysis_latestのcodeの中に使えそうな関数があるかも)
 movie_fold_names = extract_element_fold(movie_fold_names, monkey_name);
