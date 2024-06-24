@@ -20,10 +20,11 @@ real_name = 'Seseki';
 extract_image = false;
 process_image = false; 
 joint_angle_calculation = false;
-create_joint_angle_diagram = true;
+create_joint_angle_diagram = false;
+perform_anova = true;
 
-extract_image_type = 'manual'; % 'manual' / 'auto'
-diff_end_frame = 60;
+extract_image_type = 'auto'; % 'manual' / 'auto'
+diff_end_frame = 20;
 plus_direction = 'extensor';
 video_type = '.avi'; % 読み込み対象の動画の拡張子
 trial_num = 20; % if you want to pick up image for all trial, please set 'NaN'
@@ -31,6 +32,10 @@ image_type = '.png';
 montage_numToPick = 9;
 image_row_num = 3;
 overlay_numToPick = NaN; % if you want to use all trial images, please set 'NaN'
+linear_regression_plot = true; % whether you want to draw reqression function which is estimated lineaer regression
+estimate_order = 2;
+group_type = 'pre_post'; % 'pre_post'/ 'designated_group'
+designated_group = {[2,3], [4,5]};
 
 %% code section
 % generates the data necessary for general motion analysis.
@@ -53,11 +58,13 @@ switch extract_image_type
         common_coordination_data_path = fullfile(pwd, 'save_data', 'manual', 'coordination_data');
         common_joint_angle_path = fullfile(pwd, 'save_data', 'manual', 'joint_angle', [plus_direction '-plus']);   
         common_save_transition_figure_fold_path = fullfile(pwd, 'save_figure', 'transition_joint_angle', [plus_direction '-plus'], 'manual');
+        common_anova_result_figure_path = fullfile(pwd, 'save_figure', 'anova', [plus_direction '-plus'], 'manual');
     case 'auto'
         common_save_figure_fold_path = fullfile(pwd, 'save_figure', 'specific_images', 'auto', ['diff_end_' num2str(diff_end_frame) '_frame']);
         common_coordination_data_path = fullfile(pwd, 'save_data', 'auto', 'coordination_data', ['diff_end_' num2str(diff_end_frame) '_frame']);
         common_joint_angle_path = fullfile(pwd, 'save_data', 'auto', 'joint_angle', [plus_direction '-plus'], ['diff_end_' num2str(diff_end_frame) '_frame']);    
         common_save_transition_figure_fold_path = fullfile(pwd, 'save_figure', 'transition_joint_angle', [plus_direction '-plus'], 'auto', ['diff_end_' num2str(diff_end_frame) '_frame']);
+        common_anova_result_figure_path = fullfile(pwd, 'save_figure', 'anova', [plus_direction '-plus'], 'auto', ['diff_end_' num2str(diff_end_frame) '_frame']);
 end
 
 for day_id = 1:length(day_folders)
@@ -216,10 +223,92 @@ if create_joint_angle_diagram == 1
 
     % plot data
     [elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
-%         post_first_elapsed_date = elapsed_date_list(find(elapsed_date_list > 0, 1 ));
-    post_first_elapsed_date = 20; % 暫定的
+    post_first_elapsed_date = elapsed_date_list(find(elapsed_date_list > 0, 1 ));
+    
     % plot figure
-    plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, common_save_transition_figure_fold_path, diff_end_frame)
+    plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, common_save_transition_figure_fold_path, diff_end_frame, linear_regression_plot, estimate_order)
+end
+
+if perform_anova
+    value_struct = struct();
+    [elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
+    for day_id = 1:length(day_folders)
+        ref_joint_angle_data_path = fullfile(common_joint_angle_path, day_folders{day_id}, 'joint_angle_data.mat');
+        load(ref_joint_angle_data_path, 'target_joint', 'joint_angle_data_list')
+        for target_joint_id = 1:length(target_joint)
+            if day_id==1
+                % prepare empty array
+                value_struct.(target_joint{target_joint_id}) = {};
+                if target_joint_id == 1
+                    group_label = {};
+                end
+            end
+
+            ref_data = joint_angle_data_list.(target_joint{target_joint_id});
+            trial_num = length(ref_data);
+            
+            % assingn data & label
+            if target_joint_id == 1
+                assigned_date_flag = false;
+                switch group_type
+                    case 'pre_post'
+                        % assign data
+                        value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
+                        assigned_date_flag = true;
+
+                        % assing label
+                        if elapsed_date_list(day_id) < 0
+                            group_label{day_id} = repmat({'pre'}, trial_num, 1);
+                        else
+                            group_label{day_id} = repmat({'post'}, trial_num, 1);
+                        end
+                    case 'designated_group'
+                        for group_id = 1:length(designated_group)
+                            if ismember(day_id, designated_group{group_id})
+                                assigned_group_id = num2str(group_id);
+                                assigned_date_flag = true;
+                                break;
+                            end
+                        end
+                        if assigned_date_flag == 1
+                            group_label{end+1} = repmat({['group' assigned_group_id]}, trial_num, 1);
+                            % assign data
+                            value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
+                        end
+                end
+            else
+                if assigned_date_flag == 1
+                    value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
+                end
+            end
+
+            % perform cell2mat
+            if day_id == length(day_folders)
+                value_struct.(target_joint{target_joint_id}) = cell2mat(value_struct.(target_joint{target_joint_id}));
+                if target_joint_id == 1
+                    group_label = vertcat(group_label{:});
+                end
+            end
+        end
+    end
+    
+    % perform anova
+    for target_joint_id = 1:length(target_joint)
+        ref_data = value_struct.(target_joint{target_joint_id});
+        [p, tbl] = anova1(ref_data, group_label);
+        
+        % decoration
+        grid on;
+        set(gca, "FontSize", 14);
+        ylabel('joint angle[angle]', 'FontSize', 18);
+        title(['1-way anova (' target_joint{target_joint_id} '-joint)' newline ' p-value = ' num2str(p) '(<0.05)'], 'FontSize', 18);
+
+        % save figure
+        makefold(common_anova_result_figure_path);
+        saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(pre_post).png']));
+        saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(pre_post).fig']));
+        close all;
+    end
 end
 
 %% define local function
@@ -380,7 +469,7 @@ end
 %% create a diagram showing the transition of joint angle
 %{
 %}
-function [] = plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, save_figure_fold_path, diff_end_frame)
+function [] = plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, save_figure_fold_path, diff_end_frame, linear_regression_plot, estimate_order)
 target_joint_num = length(target_joint);
 figure('Position',[100 100 600 300 * target_joint_num]);
 
@@ -394,6 +483,48 @@ for target_joint_id = 1:target_joint_num
     plot(elapsed_date_list, ref_joint_data.mean, 'Color', 'blue', 'LineWidth',1.2);
     hold on;
     errorbar(elapsed_date_list, ref_joint_data.mean, ref_joint_data.std, 'o', 'Color', 'blue', 'LineWidth',1.2)
+    
+    % estimate and draw regression function
+    if linear_regression_plot == 1
+        % prepare explanatory variable & response variable
+        y_data = transpose(ref_joint_data.mean);
+        offset_elapsed_data_list = elapsed_date_list - elapsed_date_list(1);
+        function_string_list = {'x: elapsed date from Phase A', 'y: joint angle', ''};
+        colors = {'red',  'magenta', 'cyan', 'green'};
+
+        %perform polynominal regression by following estimate order
+        for order_reg_func_idx = 1:estimate_order
+            % parepare matrix
+            x_data = zeros(length(y_data), order_reg_func_idx+1);
+            x_data(:, 1) = 1;
+            
+            for order_idx = 1:order_reg_func_idx
+                x_data(:, order_idx+1) = transpose(power(offset_elapsed_data_list, order_idx));
+            end
+            estimated_param = pinv(x_data) * y_data;
+            string_element = {};
+            for param_id = 1:length(estimated_param)
+                param_value = round(estimated_param(param_id), 2);
+                if param_id==1
+                    string_element{end+1} = [num2str(param_value)];
+                elseif param_id == 2
+                    string_element{end+1} = [num2str(param_value) 'x'];
+                else
+                    string_element{end+1} = [num2str(param_value) 'x^' num2str(param_id-1)];
+                end
+            end
+            estimated_y = x_data * estimated_param;
+            
+            % plot estimated function
+            use_color_idx = mod(order_reg_func_idx-1, length(colors)) + 1;
+            plot(elapsed_date_list, estimated_y, 'LineWidth',1.2, 'Color', colors{use_color_idx});
+            
+            ref_string = strjoin(string_element(end:-1:1), '+');
+            ref_string = strrep(ref_string, '+-', '-');
+
+            function_string_list{end+1} = ['y=' ref_string];
+        end
+    end
 
     % decoration
     xlim([elapsed_date_list(1) elapsed_date_list(end)]);
@@ -410,6 +541,26 @@ for target_joint_id = 1:target_joint_num
     rectangle('Position', square_coordination, 'FaceColor',[1, 1, 1], 'EdgeColor', 'K', 'LineWidth',1.2);
     ylim([lower_lim upper_lim]);
     title([target_joint{target_joint_id} ' joint angle'], 'FontSize',15)
+
+    % add text to explain estimated function
+    x_criterion = elapsed_date_list(4); % phase D
+
+    % ハードコーディング
+    if target_joint_id== 1
+        y_criterion = lower_lim + 14;
+    elseif target_joint_id==2
+        y_criterion = upper_lim - 5;
+    end
+    for line_idx = 1:length(function_string_list)
+        if line_idx >= 4
+            % explanation of function
+            use_color_idx = mod(line_idx - 4, length(colors)) + 1;
+            text(x_criterion, y_criterion - (line_idx-1)*3, function_string_list{line_idx}, 'Color', colors{use_color_idx})
+        else
+            % explanation of x-axis, y-axis or blank
+            text(x_criterion, y_criterion - (line_idx-1)*3, function_string_list{line_idx})
+        end
+    end
     hold off;
     hold off;
 end
@@ -427,6 +578,7 @@ makefold(save_figure_fold_path)
 saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.png']))
 saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.fig']))
 close all;
+
 end
 
 
