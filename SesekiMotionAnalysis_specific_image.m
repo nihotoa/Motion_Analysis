@@ -1,11 +1,20 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %{
+[analysis workflow]
+1. analysisPackageによって動画を切り出し、Motion_analysis/Seseki_movieにその動画を移す
+2.このコードのextract_image(任意の1フレームを各トライアル動画から持ってくる関数), proces_image(overlya, montageの作成)をtrueにして実行
+3.anaconda 環境でdeeplabcutの環境に変更して(必要なライブラリがインストールされているため),annotationProgram.pyによってannotation
+4.joint_angle_calculation(アノテーションによってえられたキーポイント情報から, 関節角度を計算)
+5.create_joint_angle_diagram(フェーズごとの関節角度の遷移とその回帰結果をプロット)
+6.perform_anovaによって、比較対象のフェーズの関節角度を一元配置分散分析
+
 [改善点]
 post_first_elapsed_dateが20になっているので、変更する
 path設定が汚すぎ
 save_dataのautoの階層構造がデータによって違う
 向き => 日付 => フレーム前   で統一する
 (データ参照のpathが変わりそうでめんどいから保留してる)
+anovaの図のセーブ設定を変える
 
 [注意点] 
 annotationのプログラムはpythonで作った
@@ -21,7 +30,8 @@ extract_image = false;
 process_image = false; 
 joint_angle_calculation = false;
 create_joint_angle_diagram = false;
-perform_anova = true;
+perform_anova = false;
+plot_anova_heatmap = true;
 
 extract_image_type = 'auto'; % 'manual' / 'auto'
 diff_end_frame = 20;
@@ -32,10 +42,12 @@ image_type = '.png';
 montage_numToPick = 9;
 image_row_num = 3;
 overlay_numToPick = NaN; % if you want to use all trial images, please set 'NaN'
+phase_date_list = {'20200117', '20200212', '20200226', '20200305', '20200310', '20200330'};
 linear_regression_plot = true; % whether you want to draw reqression function which is estimated lineaer regression
-estimate_order = 2;
-group_type = 'pre_post'; % 'pre_post'/ 'designated_group'
+estimate_order = 1;
+group_type = 'designated_group'; % 'pre_post'/ 'designated_group'/'vs_phase_A'
 designated_group = {[2,3], [4,5]};
+significant_level = 0.01;
 
 %% code section
 % generates the data necessary for general motion analysis.
@@ -222,76 +234,18 @@ if create_joint_angle_diagram == 1
     end    
 
     % plot data
-    [elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
+    elapsed_date_list = makeElapsedDateList(day_folders, '200121');
     post_first_elapsed_date = elapsed_date_list(find(elapsed_date_list > 0, 1 ));
+    phase_elapsed_date_list = makeElapsedDateList(phase_date_list, '200121');
     
     % plot figure
-    plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, common_save_transition_figure_fold_path, diff_end_frame, linear_regression_plot, estimate_order)
+    plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, phase_elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, common_save_transition_figure_fold_path, diff_end_frame, linear_regression_plot, estimate_order)
 end
 
-if perform_anova
-    value_struct = struct();
-    [elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
-    for day_id = 1:length(day_folders)
-        ref_joint_angle_data_path = fullfile(common_joint_angle_path, day_folders{day_id}, 'joint_angle_data.mat');
-        load(ref_joint_angle_data_path, 'target_joint', 'joint_angle_data_list')
-        for target_joint_id = 1:length(target_joint)
-            if day_id==1
-                % prepare empty array
-                value_struct.(target_joint{target_joint_id}) = {};
-                if target_joint_id == 1
-                    group_label = {};
-                end
-            end
+if perform_anova == 1
+    % prepare materials which is needed to perform anova
+    [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, group_type, designated_group);
 
-            ref_data = joint_angle_data_list.(target_joint{target_joint_id});
-            trial_num = length(ref_data);
-            
-            % assingn data & label
-            if target_joint_id == 1
-                assigned_date_flag = false;
-                switch group_type
-                    case 'pre_post'
-                        % assign data
-                        value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
-                        assigned_date_flag = true;
-
-                        % assing label
-                        if elapsed_date_list(day_id) < 0
-                            group_label{day_id} = repmat({'pre'}, trial_num, 1);
-                        else
-                            group_label{day_id} = repmat({'post'}, trial_num, 1);
-                        end
-                    case 'designated_group'
-                        for group_id = 1:length(designated_group)
-                            if ismember(day_id, designated_group{group_id})
-                                assigned_group_id = num2str(group_id);
-                                assigned_date_flag = true;
-                                break;
-                            end
-                        end
-                        if assigned_date_flag == 1
-                            group_label{end+1} = repmat({['group' assigned_group_id]}, trial_num, 1);
-                            % assign data
-                            value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
-                        end
-                end
-            else
-                if assigned_date_flag == 1
-                    value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
-                end
-            end
-
-            % perform cell2mat
-            if day_id == length(day_folders)
-                value_struct.(target_joint{target_joint_id}) = cell2mat(value_struct.(target_joint{target_joint_id}));
-                if target_joint_id == 1
-                    group_label = vertcat(group_label{:});
-                end
-            end
-        end
-    end
-    
     % perform anova
     for target_joint_id = 1:length(target_joint)
         ref_data = value_struct.(target_joint{target_joint_id});
@@ -310,6 +264,115 @@ if perform_anova
         close all;
     end
 end
+
+if plot_anova_heatmap == 1
+    % データの作成
+    heatmap_struct = struct();
+    background_color_struct = struct();
+    customColormap = [1 1 1; 0 0 0; 1 0 0; 0 0 1]; % white, black, red, blue
+    day_num = length(day_folders);
+    for day_id1 = 1:day_num
+        for day_id2 = (day_id1+1):day_num
+            designated_group = {day_id1, day_id2};
+            % prepare materials which is needed to perform anova
+            [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, 'designated_group', designated_group);
+
+            % perform anova
+            for target_joint_id = 1:length(target_joint)
+                ref_data = value_struct.(target_joint{target_joint_id});
+                [p, tbl] = anova1(ref_data, group_label, "off");
+                if and(day_id1==1, day_id2==2)
+                    heatmap_struct.(target_joint{target_joint_id}) = nan(day_num, day_num);
+                    background_color_struct.(target_joint{target_joint_id}) = ones(day_num, day_num);
+                end
+
+                heatmap_struct.(target_joint{target_joint_id})(day_id1, day_id2) = p;
+                % assign background color
+                if (isnan(p)) || (p > significant_level)
+                    % 有意差なし
+                    background_color_struct.(target_joint{target_joint_id})(day_id1, day_id2) = 2;
+                else
+                    id1_data_idx = find(strcmp(group_label, 'group1'));
+                    id2_data_idx = find(strcmp(group_label, 'group2'));
+                    id1_data_mean = mean(ref_data(id1_data_idx));
+                    id2_data_mean = mean(ref_data(id2_data_idx));
+                    if id1_data_mean < id2_data_mean
+                        % 有意差あり & 上昇
+                        background_color_struct.(target_joint{target_joint_id})(day_id1, day_id2) = 3;
+                    else
+                        % 有意差あり & 減少
+                        background_color_struct.(target_joint{target_joint_id})(day_id1, day_id2) = 4;
+                    end
+                end
+            end
+        end
+    end
+
+    %% plot heatmap
+    % make phase_labels
+    phase_labels = cell(day_num, 1);
+    elapsed_date_list = makeElapsedDateList(day_folders, '200121');
+    phase_elapsed_date_list = makeElapsedDateList(phase_date_list, '200121');
+    [~, no_phase_idx_list] = setdiff(elapsed_date_list, phase_elapsed_date_list);
+    phase_idx_list = setdiff(1:day_num, no_phase_idx_list);
+    alphabet_count = 1;
+    for ii = 1:length(phase_idx_list)
+        phase_idx = phase_idx_list(ii);
+        phase_labels{phase_idx} = ['Phase ' char('A' + (alphabet_count - 1))];
+        alphabet_count = alphabet_count + 1;
+    end
+    no_phase_count = 1;
+    for ii = 1:length(no_phase_idx_list)
+        no_phase_idx = no_phase_idx_list(ii);
+        % 文字リテラルだから改善した方がいい
+        phase_labels{no_phase_idx} = ['Phase EtoF-' num2str(no_phase_count)];
+        no_phase_count = no_phase_count + 1;
+    end
+
+    % plot heatmap
+    for target_joint_id = 1:length(target_joint)
+        ref_heatmap_data = heatmap_struct.(target_joint{target_joint_id});
+        ref_background_color = background_color_struct.(target_joint{target_joint_id});
+        figure('position', [100, 100, 1200, 1200])
+        colormap(customColormap);
+
+        % 色のみをプロット
+        imagesc(ref_background_color);
+        colorbar off;
+        axis equal tight;
+
+        % 各マスの上にテキストを入れていく
+        textStrings = num2str(ref_heatmap_data(:), '%.4f');
+        textStrings = strtrim(cellstr(textStrings));
+        [x, y] = meshgrid(1:size(ref_heatmap_data, 2), 1:size(ref_heatmap_data, 1));
+        hStrings = text(x(:), y(:), textStrings(:), 'HorizontalAlignment', 'center', 'Color', 'w');
+        nanIndex_list = isnan(ref_heatmap_data(:));
+        set(hStrings(nanIndex_list), 'Color', 'k');
+
+        %decoration
+        axis xy;
+        xline((0.5:1:day_num-0.5))
+        yline((0.5:1:day_num-0.5))
+        xticks(1:day_num); yticks(1:day_num);
+        xticklabels(phase_labels);
+        yticklabels(phase_labels);
+        xtickangle(90);
+        set(gca, 'FontSize', 15)
+        c = colorbar;
+        c.Ticks = [1.4 2.15 2.9 3.65];
+        c.TickLabels = {'NaN', 'n.s.', 'Sig.(increase)', 'Sig.(decrease)'};
+        c.FontSize=20;
+        title_str = sprintf(['anova result (' target_joint{target_joint_id} '-joint) (α=' num2str(significant_level) ')']);
+        title(title_str, 'FontSize', 20)
+
+        % save figure
+        makefold(common_anova_result_figure_path);
+        saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(all_combination_heatmap_a = ' num2str(significant_level) ').png']));
+        saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(all_combination_heatmap_a = ' num2str(significant_level) ').fig']));
+        close all;
+    end
+end
+
 
 %% define local function
 %{
@@ -469,7 +532,11 @@ end
 %% create a diagram showing the transition of joint angle
 %{
 %}
-function [] = plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, save_figure_fold_path, diff_end_frame, linear_regression_plot, estimate_order)
+function [] = plot_phase_figure_manual(ref_term_data, target_joint, elapsed_date_list, phase_elapsed_date_list, post_first_elapsed_date, extract_image_type, plus_direction, save_figure_fold_path, diff_end_frame, linear_regression_plot, estimate_order)
+% grouping by whether or not it belogs to 'phase_elapsed_date_list'
+[not_phase_elapsed_date_list, not_phase_id] = setdiff(elapsed_date_list, phase_elapsed_date_list);
+phase_id = setdiff(1:length(elapsed_date_list), not_phase_id);
+
 target_joint_num = length(target_joint);
 figure('Position',[100 100 600 300 * target_joint_num]);
 
@@ -480,17 +547,23 @@ for target_joint_id = 1:target_joint_num
 
     % plot 
     hold on
+    %{
     plot(elapsed_date_list, ref_joint_data.mean, 'Color', 'blue', 'LineWidth',1.2);
     hold on;
     errorbar(elapsed_date_list, ref_joint_data.mean, ref_joint_data.std, 'o', 'Color', 'blue', 'LineWidth',1.2)
-    
+    %}
+    errorbar(elapsed_date_list, ref_joint_data.mean, ref_joint_data.std, 'Color', 'blue', 'LineWidth',1.2)
+    hold on;
+    plot(phase_elapsed_date_list, ref_joint_data.mean(phase_id), 'o', 'MarkerFaceColor', 'red', 'MarkerEdgeColor', 'red', 'LineWidth',1.2)
+    xline(phase_elapsed_date_list, '--', 'Color', 'red', 'LineWidth',1.2)
+    plot(not_phase_elapsed_date_list, ref_joint_data.mean(not_phase_id), 'o', 'MarkerFaceColor', 'blue', 'MarkerEdgeColor', 'blue', 'LineWidth',1.2)
     % estimate and draw regression function
     if linear_regression_plot == 1
         % prepare explanatory variable & response variable
         y_data = transpose(ref_joint_data.mean);
         offset_elapsed_data_list = elapsed_date_list - elapsed_date_list(1);
         function_string_list = {'x: elapsed date from Phase A', 'y: joint angle', ''};
-        colors = {'red',  'magenta', 'cyan', 'green'};
+        colors = {'green',  'magenta', 'cyan', 'red'};
 
         %perform polynominal regression by following estimate order
         for order_reg_func_idx = 1:estimate_order
@@ -579,6 +652,70 @@ saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.png']))
 saveas(gcf, fullfile(save_figure_fold_path, [figure_file_name '.fig']))
 close all;
 
+end
+
+function [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, group_type, designated_group)
+value_struct = struct();
+[elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
+for day_id = 1:length(day_folders)
+    ref_joint_angle_data_path = fullfile(common_joint_angle_path, day_folders{day_id}, 'joint_angle_data.mat');
+    load(ref_joint_angle_data_path, 'target_joint', 'joint_angle_data_list')
+    for target_joint_id = 1:length(target_joint)
+        if day_id==1
+            % prepare empty array
+            value_struct.(target_joint{target_joint_id}) = {};
+            if target_joint_id == 1
+                group_label = {};
+            end
+        end
+
+        ref_data = joint_angle_data_list.(target_joint{target_joint_id});
+        trial_num = length(ref_data);
+        
+        % assingn data & label
+        if target_joint_id == 1
+            assigned_date_flag = false;
+            switch group_type
+                case 'pre_post'
+                    % assign data
+                    value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
+                    assigned_date_flag = true;
+
+                    % assing label
+                    if elapsed_date_list(day_id) < 0
+                        group_label{day_id} = repmat({'pre'}, trial_num, 1);
+                    else
+                        group_label{day_id} = repmat({'post'}, trial_num, 1);
+                    end
+                case 'designated_group'
+                    for group_id = 1:length(designated_group)
+                        if ismember(day_id, designated_group{group_id})
+                            assigned_group_id = num2str(group_id);
+                            assigned_date_flag = true;
+                            break;
+                        end
+                    end
+                    if assigned_date_flag == 1
+                        group_label{end+1} = repmat({['group' assigned_group_id]}, trial_num, 1);
+                        % assign data
+                        value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
+                    end
+            end
+        else
+            if assigned_date_flag == 1
+                value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
+            end
+        end
+
+        % perform cell2mat
+        if day_id == length(day_folders)
+            value_struct.(target_joint{target_joint_id}) = cell2mat(value_struct.(target_joint{target_joint_id}));
+            if target_joint_id == 1
+                group_label = vertcat(group_label{:});
+            end
+        end
+    end
+end
 end
 
 
