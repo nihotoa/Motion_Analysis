@@ -30,8 +30,8 @@ extract_image = false;
 process_image = false; 
 joint_angle_calculation = false;
 create_joint_angle_diagram = false;
-perform_anova = false;
-plot_anova_heatmap = true;
+perform_anova = true;
+plot_anova_heatmap = false;
 
 extract_image_type = 'auto'; % 'manual' / 'auto'
 diff_end_frame = 20;
@@ -45,8 +45,8 @@ overlay_numToPick = NaN; % if you want to use all trial images, please set 'NaN'
 phase_date_list = {'20200117', '20200212', '20200226', '20200305', '20200310', '20200330'};
 linear_regression_plot = true; % whether you want to draw reqression function which is estimated lineaer regression
 estimate_order = 1;
-group_type = 'designated_group'; % 'pre_post'/ 'designated_group'/'vs_phase_A'
-designated_group = {[2,3], [4,5]};
+group_type = 'pre_post'; % 'pre_post'/ 'designated_group'
+designated_group = {[1], [2]};
 significant_level = 0.01;
 
 %% code section
@@ -243,8 +243,11 @@ if create_joint_angle_diagram == 1
 end
 
 if perform_anova == 1
+    % prepare ;labels
+    phase_labels = makePhaseLabels(day_folders, phase_date_list);
+
     % prepare materials which is needed to perform anova
-    [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, group_type, designated_group);
+    [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, group_type, designated_group, phase_labels);
 
     % perform anova
     for target_joint_id = 1:length(target_joint)
@@ -255,12 +258,20 @@ if perform_anova == 1
         grid on;
         set(gca, "FontSize", 14);
         ylabel('joint angle[angle]', 'FontSize', 18);
+        h = gca;
         title(['1-way anova (' target_joint{target_joint_id} '-joint)' newline ' p-value = ' num2str(p) '(<0.05)'], 'FontSize', 18);
 
         % save figure
         makefold(common_anova_result_figure_path);
-        saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(pre_post).png']));
-        saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(pre_post).fig']));
+        switch group_type
+            case 'pre_post'
+                saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(pre_post).png']));
+                saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(pre_post).fig']));
+            case 'designated_group'
+                unique_name = strjoin(unique(group_label), '_vs_');
+                saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(' unique_name ').png']));
+                saveas(gcf, fullfile(common_anova_result_figure_path, ['1way_anova_result(' target_joint{target_joint_id} ')(' unique_name ').fig']));
+        end
         close all;
     end
 end
@@ -271,11 +282,14 @@ if plot_anova_heatmap == 1
     background_color_struct = struct();
     customColormap = [1 1 1; 0 0 0; 1 0 0; 0 0 1]; % white, black, red, blue
     day_num = length(day_folders);
+    %make labels
+    phase_labels = makePhaseLabels(day_folders, phase_date_list);
+
     for day_id1 = 1:day_num
         for day_id2 = (day_id1+1):day_num
             designated_group = {day_id1, day_id2};
             % prepare materials which is needed to perform anova
-            [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, 'designated_group', designated_group);
+            [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, 'designated_group', designated_group, phase_labels);
 
             % perform anova
             for target_joint_id = 1:length(target_joint)
@@ -292,8 +306,8 @@ if plot_anova_heatmap == 1
                     % 有意差なし
                     background_color_struct.(target_joint{target_joint_id})(day_id1, day_id2) = 2;
                 else
-                    id1_data_idx = find(strcmp(group_label, 'group1'));
-                    id2_data_idx = find(strcmp(group_label, 'group2'));
+                    id1_data_idx = find(strcmp(group_label, phase_labels{day_id1}));
+                    id2_data_idx = find(strcmp(group_label, phase_labels{day_id2}));
                     id1_data_mean = mean(ref_data(id1_data_idx));
                     id2_data_mean = mean(ref_data(id2_data_idx));
                     if id1_data_mean < id2_data_mean
@@ -309,26 +323,6 @@ if plot_anova_heatmap == 1
     end
 
     %% plot heatmap
-    % make phase_labels
-    phase_labels = cell(day_num, 1);
-    elapsed_date_list = makeElapsedDateList(day_folders, '200121');
-    phase_elapsed_date_list = makeElapsedDateList(phase_date_list, '200121');
-    [~, no_phase_idx_list] = setdiff(elapsed_date_list, phase_elapsed_date_list);
-    phase_idx_list = setdiff(1:day_num, no_phase_idx_list);
-    alphabet_count = 1;
-    for ii = 1:length(phase_idx_list)
-        phase_idx = phase_idx_list(ii);
-        phase_labels{phase_idx} = ['Phase ' char('A' + (alphabet_count - 1))];
-        alphabet_count = alphabet_count + 1;
-    end
-    no_phase_count = 1;
-    for ii = 1:length(no_phase_idx_list)
-        no_phase_idx = no_phase_idx_list(ii);
-        % 文字リテラルだから改善した方がいい
-        phase_labels{no_phase_idx} = ['Phase EtoF-' num2str(no_phase_count)];
-        no_phase_count = no_phase_count + 1;
-    end
-
     % plot heatmap
     for target_joint_id = 1:length(target_joint)
         ref_heatmap_data = heatmap_struct.(target_joint{target_joint_id});
@@ -654,7 +648,22 @@ close all;
 
 end
 
-function [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, group_type, designated_group)
+function [value_struct, group_label, target_joint] = anovaPreparation(day_folders, common_joint_angle_path, group_type, designated_group, phase_labels)
+if strcmp(group_type, 'designated_group')
+    group_name_list = cell(length(designated_group), 1);
+    for group_idx = 1:length(designated_group)
+        phase_id_vector = designated_group{group_idx};
+        if length(phase_id_vector) == 1
+            group_name_list{group_idx} = phase_labels{phase_id_vector};
+        else
+            applicable_phase_name_list = phase_labels(phase_id_vector);
+            unique_name_list = strrep(applicable_phase_name_list, 'Phase ', '');
+            use_name_pairs = unique_name_list([1,length(unique_name_list)]);
+            group_name_list{group_idx} = ['Phase ' strjoin(use_name_pairs, '_to_')];
+        end
+    end
+end
+
 value_struct = struct();
 [elapsed_date_list] = makeElapsedDateList(day_folders, '200121');
 for day_id = 1:length(day_folders)
@@ -690,13 +699,13 @@ for day_id = 1:length(day_folders)
                 case 'designated_group'
                     for group_id = 1:length(designated_group)
                         if ismember(day_id, designated_group{group_id})
-                            assigned_group_id = num2str(group_id);
+                            assigned_group_id = group_id;
                             assigned_date_flag = true;
                             break;
                         end
                     end
                     if assigned_date_flag == 1
-                        group_label{end+1} = repmat({['group' assigned_group_id]}, trial_num, 1);
+                        group_label{end+1} = repmat({group_name_list{assigned_group_id}}, trial_num, 1);
                         % assign data
                         value_struct.(target_joint{target_joint_id}){end+1, 1} = ref_data;
                     end
@@ -715,6 +724,28 @@ for day_id = 1:length(day_folders)
             end
         end
     end
+end
+end
+
+function [phase_labels] = makePhaseLabels(day_folders, phase_date_list)
+day_num = length(day_folders);
+phase_labels = cell(day_num, 1);
+elapsed_date_list = makeElapsedDateList(day_folders, '200121');
+phase_elapsed_date_list = makeElapsedDateList(phase_date_list, '200121');
+[~, no_phase_idx_list] = setdiff(elapsed_date_list, phase_elapsed_date_list);
+phase_idx_list = setdiff(1:day_num, no_phase_idx_list);
+alphabet_count = 1;
+for ii = 1:length(phase_idx_list)
+    phase_idx = phase_idx_list(ii);
+    phase_labels{phase_idx} = ['Phase ' char('A' + (alphabet_count - 1))];
+    alphabet_count = alphabet_count + 1;
+end
+no_phase_count = 1;
+for ii = 1:length(no_phase_idx_list)
+    no_phase_idx = no_phase_idx_list(ii);
+    % 文字リテラルだから改善した方がいい
+    phase_labels{no_phase_idx} = ['Phase EtoF-' num2str(no_phase_count)];
+    no_phase_count = no_phase_count + 1;
 end
 end
 
