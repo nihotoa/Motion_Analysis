@@ -3,6 +3,7 @@
 ・zoom機能
 ・ラベルの消去機能
 ・escを押したら、そこまででannotationのfor文をbreakしてcsvファイルを出力する処理に移るようにする
+・pathからmonkey_nameの取得がハードコーティングすぎる
 [注意点]
 annotationとdragは一緒にできないので注意(annotationした後にdragはできる)
 """
@@ -147,7 +148,7 @@ class AnnotationTool:
 def main():
     # pathの設定
     pwd = os.getcwd()
-    manual_image_path = os.path.join(pwd, 'save_figure', 'specific_images')
+    manual_image_path = os.path.join(pwd, 'save_figure')
     print('アノテーションしたい画像の入ったフォルダを選択してください')
     dialog_window = tk.Tk()
     dialog_window.withdraw()
@@ -187,13 +188,14 @@ def main():
     # csvファイルへの書き込み
     selected_folder_elements = selected_folder.split('/')
     date_folder_name = selected_folder_elements[-1]
+    monkey_name = selected_folder_elements[-5]
 
     # ファイルのセーブ場所の設定
     if 'auto' in selected_folder_elements:
         diff_contents = selected_folder_elements[-2]
-        csv_file_save_fold = os.path.join(pwd, 'save_data', 'auto', 'coordination_data', diff_contents, date_folder_name)
+        csv_file_save_fold = os.path.join(pwd, 'save_data', monkey_name, 'auto', 'coordination_data', diff_contents, date_folder_name)
     else:
-        csv_file_save_fold = os.path.join(pwd, 'save_data', 'manual', 'coordination_data', date_folder_name)
+        csv_file_save_fold = os.path.join(pwd, 'save_data', monkey_name, 'manual', 'coordination_data', date_folder_name)
     
     if not os.path.exists(csv_file_save_fold):
         os.makedirs(csv_file_save_fold)

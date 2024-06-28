@@ -3,6 +3,15 @@
 Returns only the numeric part of the input string
 (ex.)Se170516.mat -> 170516
 
+[input argument]
+input_item['char' or 'cell']: charor cell array which have char as element
+(ex.)
+char -> 'Se170516.mat'
+cell array -> {'Se170516.mat', 'Se170517.mat'}
+
+[output_argument]
+output_item['char' or 'cell']: number part of input argument .
+
 [caustion!!]
 If there are two or more number parts, extract only the first number part
 (ex.)Se170516_0001.mat ->170516
